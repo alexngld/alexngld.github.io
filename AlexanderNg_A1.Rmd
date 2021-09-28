@@ -6,11 +6,13 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(message=F, warning = F, echo = F)
 ```
 
 
 ```{r}
+knitr::opts_chunk$set(message=F, warning = F, echo = F)
+
 library(tidyverse)
 
 year <- 2017
@@ -149,6 +151,9 @@ saveRDS(pge_electric, "pge_electric.rds")
 ```
 
 ```{r}
+
+knitr::opts_chunk$set(message=F, warning = F, echo = F)
+
 year <- 2017
 quarters <- 1:4
 type <- "Gas"
@@ -292,6 +297,8 @@ pge_filter_commercial<-filter(pge_combined, CUSTOMERCLASS %in% c("Elec- Commerci
 
 ```{r mutate residential}
 
+knitr::opts_chunk$set(message=F, warning = F, echo = F)
+
 pge_residentialfinal <-
   pge_filter_residential %>% 
   select(
@@ -324,6 +331,9 @@ pge_residentialfinal <-
 ```
 
 ```{r mutate commmercial}
+
+knitr::opts_chunk$set(message=F, warning = F, echo = F)
+
 pge_commercialfinal <-
   pge_filter_commercial %>% 
   select(
@@ -355,6 +365,9 @@ pge_commercialfinal <-
   mutate(TOTALBTU = ELEC_KBTU+GAS_KBTU)
 ```
 ```{r}
+
+knitr::opts_chunk$set(message=F, warning = F, echo = F)
+
 library(plotly)
 
 pge_plotresidential<-
@@ -385,6 +398,9 @@ pge_plotresidential %>%
 
 ```
 ```{r}
+
+knitr::opts_chunk$set(message=F, warning = F, echo = F)
+
 library(plotly)
 
 pge_plotcommercial<-
