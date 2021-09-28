@@ -10,7 +10,7 @@ knitr::opts_chunk$set(message = F, warning = F, echo = F)
 ```
 
 
-```{r}
+```{r, include=FALSE}
 knitr::opts_chunk$set(message = F, warning = F, echo = F)
 
 library(tidyverse)
@@ -152,7 +152,7 @@ saveRDS(pge_electric, "pge_electric.rds")
 knitr::opts_chunk$set(message = F, warning = F, echo = F)
 ```
 
-```{r}
+```{r, include=FALSE}
 
 knitr::opts_chunk$set(message = F, warning = F, echo = F)
 
