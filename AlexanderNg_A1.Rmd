@@ -6,12 +6,12 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(message=F, warning = F, echo = F)
+knitr::opts_chunk$set(message = F, warning = F, echo = F)
 ```
 
 
 ```{r}
-knitr::opts_chunk$set(message=F, warning = F, echo = F)
+knitr::opts_chunk$set(message = F, warning = F, echo = F)
 
 library(tidyverse)
 
@@ -138,6 +138,8 @@ for(quarter in quarters) {
       "UsageByZip.csv"
     )
 
+  knitr::opts_chunk$set(message = F, warning = F, echo = F)
+  
   print(filename)
   temp <- read_csv(filename)
   pge_21_elec <- rbind(pge_21_elec,temp)
@@ -147,12 +149,12 @@ for(quarter in quarters) {
 pge_electric<- do.call("rbind", list(pge_17_elec, pge_18_elec, pge_19_elec, pge_20_elec, pge_21_elec))
 
 saveRDS(pge_electric, "pge_electric.rds")
-
+knitr::opts_chunk$set(message = F, warning = F, echo = F)
 ```
 
 ```{r}
 
-knitr::opts_chunk$set(message=F, warning = F, echo = F)
+knitr::opts_chunk$set(message = F, warning = F, echo = F)
 
 year <- 2017
 quarters <- 1:4
@@ -276,7 +278,7 @@ for(quarter in quarters) {
       type,
       "UsageByZip.csv"
     )
-
+  
   print(filename)
   temp <- read_csv(filename)
   pge_21_gas <- rbind(pge_21_gas,temp)
@@ -286,9 +288,11 @@ for(quarter in quarters) {
 pge_gas<- do.call("rbind", list(pge_17_gas, pge_18_gas, pge_19_gas, pge_20_gas, pge_21_gas))
 
 saveRDS(pge_gas, "pge_gas.rds")
-
+knitr::opts_chunk$set(message = F, warning = F, echo = F)
 ```
 ```{r merge}
+knitr::opts_chunk$set(message = F, warning = F, echo = F)
+
 pge_combined<-merge(pge_electric, pge_gas, all=TRUE)
 pge_filter_residential<-filter(pge_combined, CUSTOMERCLASS %in% c("Elec- Residential","Gas- Residential"))
 pge_filter_commercial<-filter(pge_combined, CUSTOMERCLASS %in% c("Elec- Commercial", "Gas- Commercial"))
@@ -296,8 +300,7 @@ pge_filter_commercial<-filter(pge_combined, CUSTOMERCLASS %in% c("Elec- Commerci
 ```
 
 ```{r mutate residential}
-
-knitr::opts_chunk$set(message=F, warning = F, echo = F)
+knitr::opts_chunk$set(message = F, warning = F, echo = F)
 
 pge_residentialfinal <-
   pge_filter_residential %>% 
@@ -331,8 +334,7 @@ pge_residentialfinal <-
 ```
 
 ```{r mutate commmercial}
-
-knitr::opts_chunk$set(message=F, warning = F, echo = F)
+knitr::opts_chunk$set(message = F, warning = F, echo = F)
 
 pge_commercialfinal <-
   pge_filter_commercial %>% 
@@ -365,8 +367,7 @@ pge_commercialfinal <-
   mutate(TOTALBTU = ELEC_KBTU+GAS_KBTU)
 ```
 ```{r}
-
-knitr::opts_chunk$set(message=F, warning = F, echo = F)
+knitr::opts_chunk$set(message = F, warning = F, echo = F)
 
 library(plotly)
 
@@ -384,8 +385,8 @@ pge_plotresidential<-
   ) +
   labs(
     x="Time", y="kBTU", 
-    title = "PGE Residential Electric & Gas Consumption Data from 2017 to 2021",
-    fill = "Fuel Type"
+    title = "Residential Electricity & Gas Consumer Data from 2017 to 2021",
+    fill = "Legend"
   )
 
 pge_plotresidential %>% 
@@ -398,8 +399,7 @@ pge_plotresidential %>%
 
 ```
 ```{r}
-
-knitr::opts_chunk$set(message=F, warning = F, echo = F)
+knitr::opts_chunk$set(message = F, warning = F, echo = F)
 
 library(plotly)
 
@@ -417,8 +417,8 @@ pge_plotcommercial<-
   ) +
   labs(
     x="Time", y="kBTU", 
-    title = "PGE Commercial Electric & Gas Consumption Data from 2017 to 2021",
-    fill = "Fuel Type"
+    title = "Commercial Electricity & Gas Consumer Data from 2017 to 2021",
+    fill = "Legend"
   )
 
 pge_plotcommercial %>% 
