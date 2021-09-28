@@ -439,3 +439,7 @@ This can be attributed to public health requirements for the general workforce t
 
 The pandemic did not appear to have a direct impact on commercial and residential gas consumption which appears to be tied to seasonal changes in weather instead.
 
+Assumptions: 
+Data supplied by PGE are reflective of energy consumption amongst the general population. (For example, there could be certain segments of the population who are off the grid or supplement their energy consumption through other sources such as renewables.)
+
+
