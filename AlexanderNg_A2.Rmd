@@ -1,0 +1,166 @@
+---
+title: "CEE218_Assignment2"
+author: "Alexander Ng"
+date: "10/3/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+```{r include=FALSE}
+library(tidyverse)
+library(sf)
+library(tigris)
+library(leaflet)
+library(censusapi)
+library(mapview)
+
+```
+
+```{r update, include=FALSE}
+library(devtools)
+install_github('walkerke/tigris')
+library(tigris)
+```
+
+
+```{r pull out 2020 census data for Santa Cruz, include=FALSE}
+
+Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+
+SC_pop_2020 <-
+  getCensus(
+    name = "dec/pl",
+    vintage = 2020,
+    region = "block:*", 
+    regionin = "state:06+county:087",
+    vars = "P1_001N"
+  ) %>% 
+  transmute(
+    block =
+      paste0(state,county,tract,block),
+    pop = P1_001N
+  )
+
+```
+
+```{r pull out 2010 data for Santa Cruz, include=FALSE}
+
+Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+
+SC_pop_2010 <-
+  getCensus(
+    name = "dec/pl",
+    vintage = 2010,
+    region = "block:*", 
+    regionin = "state:06+county:087",
+    vars = "P001001"
+  ) %>% 
+  transmute(
+    block =
+      paste0(state,county,tract,block),
+    pop = P001001
+  )
+
+```
+
+
+```{r mapping SC pop 2020 data, include=FALSE}
+
+SC_blocks_2020 <- blocks("CA", "Santa Cruz", year = 2020, progress_bar = F) %>%
+  st_transform(26910) %>%
+  mutate(area = st_area(.))
+
+library(units)
+
+#remove units from SC_blocks Area Column
+SC_blocks_2020$area <- drop_units(SC_blocks_2020$area)
+SC_blocks_2020_area <- SC_blocks_2020 %>%
+  select(GEOID20,area)
+
+SC_blocks_2020_area <- SC_blocks_2020_area %>%
+  st_set_geometry(NULL)
+
+colnames(SC_blocks_2020_area)[1] <- 'block'
+
+#determine absolute change in Santa Cruz population from 2010-2020
+SC_pop_new<-left_join(SC_pop_2020, SC_pop_2010, by="block") 
+
+SC_pop_new<-left_join(SC_pop_new, SC_blocks_2020_area, by='block')
+
+SC_pop_new<-SC_pop_new %>%
+  mutate(
+    absolutechange = pop.x-pop.y
+  ) %>%
+  mutate(density = absolutechange/area * 4047) #convert sq-m to acres & determine density
+
+#change blocks data frame to proper projections as maps
+SC_blocks_2020 <- SC_blocks_2020 %>%
+  st_transform(4269)
+
+```
+
+```{r start mapping, include=FALSE}
+
+SC_boundary <- places("CA", progress_bar = F) %>% 
+  filter(NAME == "Santa Cruz") %>%
+  st_transform(4269)
+
+MapSantaCruz <- SC_pop_new %>% 
+  left_join(SC_blocks_2020 %>% 
+  select(block = GEOID20)) %>% 
+  st_as_sf() %>% 
+  st_centroid() %>% 
+  .[SC_boundary, ] %>% 
+  st_set_geometry(NULL) %>% 
+  left_join(SC_blocks_2020 %>% 
+  select(block = GEOID20)) %>% 
+  st_as_sf()
+
+```
+
+```{r designing my map, message=FALSE, warning=FALSE, echo=FALSE}
+
+mybins <- c(200,150,100,50, 0, -50, -100,-150,-200, -Inf)
+res_pal <- colorBin( palette = "Spectral",
+  domain = MapSantaCruz$density,
+  bins = mybins, na.color = "transparent", 
+)
+
+leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = MapSantaCruz,
+    fillColor = ~res_pal(density),
+    color = "black",
+    opacity = 0.7,
+    fillOpacity = 1,
+    weight = 1,
+    label = ~paste0(
+      round(density), 
+      "  persons/acre "
+    ),
+    highlightOptions = highlightOptions(
+      weight = 2,
+      opacity = 1
+    )
+  ) %>% 
+  addLegend(
+    data = MapSantaCruz,
+    pal = res_pal,
+    values = ~density,
+    title = "Change in Santa Cruz Population Density <br>from 2010 to 2020 (persons/acre)"
+  )
+
+```
+
+
+## General Observations
+
+In general, there is an overall increase in the population density for Santa Cruz County, albeit in marginal increments. For example, the vast majority of the blocks where increases in population densities were observed are generally less than 50 persons per acre. While there are instances where significant decreases in population densities were observed (e.g. greater than 2000 persons per acre), these are largely confined to isolated blocks that appear to lie on the periphery of the county or along existing carriageways which may suggest the presence of residential re-developments or repurposing of previous residential properties occuring in these locations.
+
+Isolated decreases aside, the trend in increasing population densities overall suggests that Santa Cruz is an attractive option for prospective homeowners. This is not unexpected, as Santa Cruz's popular appeal could have been bolstered by her reputation as a tourist beachside destination offering both coastal sceneries and a temperate climate, in addition to her relative vicinity to natural reserves at Monterey and Redwoods State Parks. Nevertheless, urban planners would have to study further the projected resident growth trajectories and determine if the county's public infrastructure (e.g. road capacities, sanitation, health facilities) and current land zoning purposes between residential and commercial uses are adequate or with provisions for future capacity increase if needed.In addition, policymakers may wish to observe if there are other areas for concern such as disproportional increase/decrease in population densities that exhibit signs of direct corelations with census data such as income or race.
+
+Assumptions: The above population density map was carried out primarily using the block boundaries for Census 2020 block data which may not be mapped directly to Census 2010 block data. This has resulted in some blocks being registered as 'NA' that readers should take note of and consider for future application.
