@@ -442,6 +442,3 @@ The pandemic did not appear to have a direct impact on commercial and residentia
 Assumptions: 
 Data supplied by PGE are reflective of energy consumption amongst the general population. (For example, there could be certain segments of the population who are off the grid or supplement their energy consumption through other sources such as renewables.)
 
-There may also be unverified errors in the data supplied by PGE. For instance, the data registered for residential and commercial electricity consumption in Sep 2017 were significantly higher (over 50%) than other data. Therefore, further consultation with PGE is required to identify the source and cause of this outlier.
-
-
