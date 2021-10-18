@@ -1,0 +1,160 @@
+---
+title: "AlexanderNg_A4"
+author: "Alexander Ng"
+date: "10/16/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load libraries & create acs database, message=FALSE, warning=FALSE, echo=FALSE}
+library(tidyverse)
+library(tigris)
+library(sf)
+library(leaflet)
+library(dplyr)
+library(censusapi)
+
+Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+
+acs_vars_2019_5yr <-
+  listCensusMetadata(
+    name = "2019/acs/acs5",
+    type = "variables"
+  )
+```
+
+
+```{r pull out educational attainment data, message=FALSE, warning=FALSE, echo=FALSE}
+
+census_race_categories <- 
+  c(
+    "White Alone",
+    "Black or African American",
+    "American Indian and Alaska Native Alone",
+    "Asian Alone",
+    "Native Hawaiian and Other Pacific Islander Alone",
+    "Some Other Race Alone",
+    "Two or More Races"
+  )
+
+alameda_educationbyrace_2019 <-
+  1:7 %>% 
+  map_dfr(function(x)
+    {
+    
+    getCensus(
+      name = "acs/acs5",
+      vintage = 2019,
+      region = "county:001", 
+      regionin = "state:06",
+      vars = paste0("group(C15002",LETTERS[x], ")")
+    ) %>%
+     select(ends_with(c("E","M")) & -c(state, NAME)) %>% 
+  summarize_all(sum) %>% 
+  pivot_longer(
+    everything(), 
+    names_to = "name",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_5yr %>%
+      select(name, label),
+  ) %>%
+  separate(
+    label,
+    into = c(NA, NA, "gender", "education"),
+    sep = "!!"
+  ) %>%
+  select(-name) %>%
+  filter(!is.na(education)) %>% 
+  mutate(                   
+    race = census_race_categories[x]
+  )
+  }) 
+      
+```
+
+
+
+```{r plot by race population, message=FALSE, warning=FALSE, echo=FALSE}
+
+alameda_educationbyrace_2019 %>% 
+  group_by(education, race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = education %>% factor(levels = unique(alameda_educationbyrace_2019$education)),
+      y = estimate,
+      fill = race %>% factor(levels = unique(alameda_educationbyrace_2019$race))
+    ),
+    stat = "identity",
+    position = "stack"
+  ) +
+  labs(
+    x = "Education Level",
+    y = "Population 25 years or older by Race",
+    title = "Education Level in Alameda by Racial Population",
+    fill = "Racial Group"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )  +
+  guides(
+    fill = guide_legend(
+      reverse = T
+    )
+  )
+  
+```
+```{r plot by racial proportion, message=FALSE, warning=FALSE, echo=FALSE}
+alameda_race_total <-
+  alameda_educationbyrace_2019 %>% 
+  group_by(race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  mutate(education = "Total")
+
+alameda_educationbyrace_2019 %>% 
+  group_by(education, race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  rbind(alameda_race_total) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = education %>% factor(levels = rev(c("Total",unique(alameda_educationbyrace_2019$education)))),
+      y = estimate,
+      fill = race %>% factor(levels = rev(unique(alameda_educationbyrace_2019$race)))
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Education Level",
+    y = "Proportion of Population 25 years or older by Race",
+    title = "Education Level in Alameda by Racial Proportion",
+    fill = "Racial Group"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )  +
+  guides(
+    fill = guide_legend(
+      reverse = T
+    )
+  )
+
+```
+
+##Is there disproportionate education attainment by race in Alameda county?
+
+From the ACS data, there are observable disproportionate education attainments by race in Alameda county. The disproportionate education attainments are most distinct amongst those who have attained a Bachelor's degree or higher, as there is a significantly higher proportion of "White Alone" or "Asian Alone" individuals in this category relative to the total population. In contrast, there is a significantly lower representation of "Black or African American" and "Some Other Race" individuals who have attained a Bachelor's degree or higher relative to the total population. The data suggests that there may be "barriers" to higher education within these racial groups and further analysis (e.g. on income levels, household demographics) would have to be carried out to determine the possible reasons for these observations and whether the trend of disproportionate representation amongst specific racial groups is increasing or decreasing. For example, the current data is centered around the total population within Alameda aged 25 years and older and cross-analysing this data with university enrollment demographics for Alameda may provide clarity on whether this trend is accelerating or reversing (some indication of whether policies to ensure equal and inclusive access to higher education throughout all racial groups are working).
+
+Another noticeable trend from the ACS data is the much higher representation of "Some Other Race Alone" individuals who did not complete high school. As above, a more in-depth analysis into the breakdown of these racial groups would provide more insight on the possible reasons for this disproportionate representation, and whether there are identifiable factors by race that are limiting individuals from these racial groups from completing high school education.
+
