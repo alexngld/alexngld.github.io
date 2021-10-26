@@ -1,0 +1,178 @@
+---
+title: "AlexanderNg_A5"
+author: "Alexander Ng"
+date: "10/24/2021"
+output: html_document
+---
+
+```{r setup, message=FALSE, warning=FALSE, echo=FALSE}
+
+knitr::opts_chunk$set(echo = F, warnings = F, messages = F)
+
+```
+
+
+```{r pull out EnviroScreenData, message=FALSE, warning=FALSE, echo=FALSE, include = F}
+
+library(tidyverse)
+library(censusapi)
+library(sf)
+library(tigris)
+library(mapview)
+
+library(readxl)
+
+ces4 <- read_excel(
+    "calenviroscreen40resultsdatadictionary_F_2021.xlsx", 
+  sheet = "CES4.0FINAL_results"
+)
+
+Bay_Area<- c("Alameda","Contra Costa","Marin","Napa","San Francisco","San Mateo","Santa Clara","Solano","Sonoma")
+ces4_clean <- ces4 %>%
+  filter(`California County` %in% Bay_Area)
+
+ca_tracts <- tracts("CA") 
+
+ces4_map <- ces4_clean %>%
+  left_join(
+    ca_tracts %>%
+      select(GEOID) %>%
+      mutate(GEOID = as.numeric(GEOID)),
+    by = c("Census Tract" = "GEOID") 
+  ) %>%
+
+  st_as_sf()
+ces4_map<- ces4_map %>%
+  select(c("Census Tract","California County","Approximate Location","Longitude","Latitude","PM2.5","Asthma","geometry")) %>%
+  filter(
+    !is.na(Asthma)
+    )
+
+
+```
+
+```{r}
+mapview(ces4_map, zcol = "PM2.5",layer.name="Annual Mean Concentration of PM2.5 (µg/m3) between 2015-2017
+")
+```
+
+
+#From CalEnviroScreen 4.0, the highest concentrations of PM2.5  are observed in the cities of Oakland and Napa. These cities have PM2.5 concentrations of over 16 µg/m3 from 2015-2017.
+ 
+#Note: PM2.5 annual mean monitoring data were extracted for all monitoring sites in California from CARB’s air monitoring network database for the years 2015-2017, with the exception of the special purpose monitor at San Ysidro wheredata were available only for 2015 and part of 2016.
+
+
+```{r map Asthma data, message=FALSE, warning=FALSE, echo=FALSE}
+
+mapview(ces4_map, zcol = "Asthma", layer.name="Average frequency of ED Visits for asthma per 10,000 capita (age-adjusted) between 2015-2017")
+
+```
+
+#From CalEnviroScreen 4.0, the highest ED visits for asthma are observed in the cities of Vallejo and San Leandro. These cities recorded over 200 visits per 10,000 capita from 2015-2017.
+ 
+#Note: Records for ED visits occurring during 2015-2017 were obtained from OSHPD’s Emergency Department and Ambulatory Surgery files for patients listed as residing in California and principle diagnostic of asthma.
+
+```{r linear regression analysis scatter plot of PM2.5 against Asthma, message=FALSE, warning=FALSE, echo=FALSE}
+
+ggplot(
+  data = ces4_map,
+  aes(
+      x = PM2.5,
+      y = Asthma
+    )
+) +
+  geom_point(size=0.5) +
+  geom_smooth(method = "lm")
+
+```
+
+
+#The best fit on the above scatter plot does not appear to be representative of the CalEnviroScreen data sets. This is because there are many  observations of high residuals in the data above the best fit line,particularly for frequency of asthma visits above 100 per 10,000 capita. The wide disparity in these residuals are in contrast with volume of lower residuals such as for frequencies of asthma visits below 50 per 10,000 capita.
+
+#An increase of 1 µg/m3 concentration in PM2.5 is associated with an increase of over 19 visits in asthma. 9.55% of the variation in PM2.5 concentration is explained by the variation in asthma visits.
+
+```{r model, message=FALSE, warning=FALSE, echo=FALSE}
+model <- lm(Asthma ~ PM2.5, ces4_map)
+
+summary(model)
+```
+
+```{r plot density, message=FALSE, warning=FALSE, echo=FALSE}
+
+plot(density(residuals(model)))
+
+```
+
+#The mean of the residuals is close to -25 and the median of the residual is -9.61, which reflects a significant skew to the density curve for the residuals. This suggests that a straight fit best-fit line may not be appropriate for the underlying data as the median should be close to 0.
+
+
+```{r plot log transformation, message=FALSE, warning=FALSE, echo=FALSE}
+
+ggplot(
+  data = ces4_map,
+  aes(
+      x = PM2.5,
+      y = log(Asthma)
+    )
+) +
+  geom_point(size=0.5) +
+  geom_smooth(method = "lm")
+```
+
+
+#The median of the residual is close to 0 which suggests that a log plot of asthma against PM2.5 may be more appropriate for the underlying data. In addition, the best fit line now appears to be better represent the CalEnviroScreen data distribution of asthma against PM2.5.
+
+#An increase of 1 µg/m3 concentration in PM2.5 is associated with an increase of over 1.4 (e0.35633) visits in asthma. 10% of the variation in PM2.5 concentration is explained by the variation in log asthma visits.
+
+```{r model2, message=FALSE, warning=FALSE, echo=FALSE}
+
+model2 <- lm(log(Asthma) ~ PM2.5, ces4_map)
+
+summary(model2)
+```
+
+```{r plot density for revised file, message=FALSE, warning=FALSE, echo=FALSE}
+
+plot(density(residuals(model2)))
+
+```
+
+#The mean of the residual is close to 0 which suggests that ploting log(asthma) against PM2.5 is more representative of a normal distribution in the data set.
+
+```{r run residuals, message=FALSE, warning=FALSE, echo=FALSE}
+
+ces4_clean <- ces4_clean %>%
+  filter(
+    !is.na(Asthma)
+    )
+
+ces4_clean$residuals <- model2$residuals 
+  
+  ces4_map2<-ces4_clean %>%
+  left_join(
+    ca_tracts %>%
+      select(GEOID) %>%
+      mutate(GEOID = as.numeric(GEOID)),
+    by = c("Census Tract" = "GEOID") 
+  ) %>%
+
+  st_as_sf()
+ces4_map2<- ces4_map2 %>%
+  select(c("Census Tract","California County","Approximate Location","Longitude","Latitude","PM2.5","Asthma","residuals","geometry")) 
+
+
+mapview(ces4_map2, zcol = "residuals",layer.name="Residuals")
+
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+
+min(ces4_map2$residuals)
+
+ces4_map2[which.min(ces4_map2$residuals), 1]
+ces4_map2[which.min(ces4_map2$residuals), 3]
+ces4_map2[which.min(ces4_map2$residuals), 4]
+ces4_map2[which.min(ces4_map2$residuals), 5]
+
+```
+#The census tract with the lowest "residual" is in Stanford University. In the context of Asthma estimation, a low residual indicates under estimation of PM2.5 against Asthma incidences. The likely reason for this under representation is because there are fewer ED visits registered in Stanford, and the age-adjusted rates accounted for the student population in that particular location, coupled with the constant inflow/outflow of students residing in the area.
