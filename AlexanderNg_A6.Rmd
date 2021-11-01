@@ -1,0 +1,198 @@
+---
+title: "AlexanderNg_A6"
+author: "Alexander Ng"
+date: "10/29/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Parts 1-3
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+library(censusapi)
+library(tidyverse)
+library(tigris)
+library(sf)
+library(leaflet)
+library(mapview)
+
+Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+
+# pums_2019_1yr <- getCensus(
+#   name = "acs/acs1/pums",
+#   vintage = 2019,
+#   region = "public use microdata area:*",
+#   regionin = "state:06",
+#   vars = c(
+#     "SERIALNO",
+#     "SPORDER",
+#     "PWGTP",
+#     "WGTP",
+#     "YBL",
+#     "BLD",
+#     "TEN",
+#     "MV",
+#     "HINCP",
+#     "AGEP"
+#   )
+# )
+# 
+# saveRDS(pums_2019_1yr,"a_pums.rds")
+pums_2019_1yr <- readRDS("a_pums.rds")
+
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+ca_pumas <-
+  pumas("CA", cb = T, progress_bar = F)
+
+sf_boundary <-
+  counties("CA", cb = T, progress_bar = F) %>%
+  filter(NAME == "San Francisco")
+
+sf_pumas <-
+  ca_pumas %>% 
+  st_centroid() %>% 
+  .[sf_boundary, ] %>% 
+  st_drop_geometry() %>% 
+  left_join(ca_pumas %>% select(GEOID10)) %>% 
+  st_as_sf()
+
+```
+
+
+```{r}
+mapview(sf_pumas)
+
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+sf_pums <- pums_2019_1yr %>% 
+  mutate(
+    PUMA = str_pad(public_use_microdata_area,5,"left","0")
+  ) %>% 
+  filter(PUMA %in% sf_pumas$PUMACE10)
+
+sf_pums_clean <- sf_pums %>%
+  mutate(
+    YBL= as.numeric(YBL),
+    AGEP= as.numeric(AGEP),
+    HINCP = as.numeric(HINCP)
+  ) %>%
+  filter(YBL %in% c("1","2","3")) %>% 
+arrange(AGEP) %>%
+  group_by(SERIALNO) %>%
+    summarize_all(first)
+```
+
+# Parts 4 & 5
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+ leadrisk_factors <- sf_pums_clean %>% 
+  mutate(
+    leadrisk = ifelse(
+      AGEP <= 6 & HINCP <=90000,
+      1,
+      0
+    )
+  )
+
+```
+
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+leadrisk_factors <- leadrisk_factors %>% 
+  mutate(
+    home = BLD %>% 
+      factor(
+        levels = leadrisk_factors$BLD %>% 
+          unique() %>%
+          as.numeric() %>% 
+          sort()
+      ),
+    tenure = TEN %>%
+      factor(
+        levels = leadrisk_factors$TEN %>% 
+          unique() %>%
+          as.numeric() %>% 
+          sort()
+      ),
+    move = MV %>%
+      factor(
+        levels = leadrisk_factors$MV %>% 
+          unique() %>%
+          as.numeric() %>% 
+          sort()
+      ),
+    puma = PUMA %>%
+      factor(
+        levels = leadrisk_factors$PUMA %>% 
+          unique() %>% 
+          sort()
+)
+)
+
+```
+
+# Logit Model
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+logit_model <- glm(
+  leadrisk ~ home + tenure + move + puma,
+  family = quasibinomial(),
+  data = leadrisk_factors
+)
+
+summary(logit_model)
+```
+
+# Predicted Score
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+predict(logit_model, data.frame(sample_n(leadrisk_factors,1,replace=FALSE, weight = NULL)), type = "response")
+
+```
+
+
+# Part 6
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+test <- predict(logit_model, data.frame(leadrisk_factors), type = "response")
+
+summary_2x2 <-
+  leadrisk_factors %>% 
+  mutate(
+    leadrisk = ifelse(
+      leadrisk == 1, 
+      "Yes", 
+      "No"
+    )
+  ) %>% 
+  pull(leadrisk) %>% 
+  table(test >=0.1)
+
+summary_2x2
+
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+predict_score <- predict(logit_model, data.frame(leadrisk_factors), type = "response")
+leadrisk_factors <- cbind(leadrisk_factors,predict_score)
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+leadrisk_filter <- leadrisk_factors[leadrisk_factors$predict_score >= 0.1, ]
+
+table(leadrisk_filter$home)
+table(leadrisk_filter$tenure)
+table(leadrisk_filter$move)
+```
+
+Among the 59 households that exceeded threshold, 40 are one-family house detached, 18 are one-family house attached and 1 is a 2-apartments household. In addition, 14 homes are owned with mortgage/loan, 39 rented and 6 occupied without rent payment.Finally, 4 households moved in between 13-23 months, 25 households between 2-4 years, 27 households between 5-9 years and 3 households between 10-19 years.
+
+The organization would likely mail around 59 postcards based on the set threshold score. Approximately 14% of these postcards would reach low-income households with children, which also covers approximately 17% for all at-risk children. To improve on this strategy, I would carry out sensitivity tests on the threshold scores (such as varying the set threshold value to assess the range of affected households) or carry out comparable analyses using other related variables in the PUMAS dataset such as HUPAC that informs on the presence and age of children within households.
+
+
