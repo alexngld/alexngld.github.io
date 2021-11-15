@@ -1,0 +1,108 @@
+---
+title: "Week8MiniLab"
+author: "Alexander Ng"
+date: "11/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+fire <- sample(
+  c(0,1), 
+  size = 10000,
+  replace = T
+)
+  
+smoke<- ifelse(
+  fire == 1,
+  sample(
+  c(0,1), 
+  size = 10000,
+  replace = T,
+  prob = c(0.05, 0.95)  #95% change of smoke
+),
+sample(
+  c(0,1), 
+  size = 10000,
+  replace = T,
+  prob = c(0.8,0.2) #if fire, 20% chance of no smoke
+)
+)
+
+  
+alarm<-ifelse(
+  smoke ==1,
+  sample(
+  c(0,1), 
+  size = 10000,
+  replace = T,
+  prob = c(0.01, 0.99)  #99% chance alarm will go off
+),
+sample(
+  c(0,1), 
+  size = 10000,
+  replace = T,
+  prob = c(0.99,0.01) #if fire, 1% chance alarm will not go off
+)
+)
+  
+  
+data<-data.frame(
+    fire_name = fire,
+    smoke_name = smoke,
+    alarm_name = alarm
+  )
+
+model <-glm(
+  alarm~fire+smoke,
+  data=data,
+  family =quasibinomial()
+)
+
+summary(model)
+
+exp(model$coefficients[2])/(exp(model$coefficients[2])+1)
+
+
+
+
+
+age<-sample(
+  5:10,     #ages 5-10
+  size = 10000,
+  replace = T
+)
+  
+shoe<- age + rnorm(10000) #normal distribution
+  
+reading<-age * 2 - 5 + rnorm(10000)*1.5
+  
+
+data<-data.frame(
+  age = age,
+  shoe = shoe,
+  reading = reading
+)
+
+model<-lm(
+  reading ~shoe,
+  data = data
+)     
+
+summary(model)
+
+model <- lm(
+  reading ~ shoe + age,
+  data = data
+)
+
+summary(model)
+
+
+
+
+```
+
