@@ -1,0 +1,164 @@
+---
+title: "AlexanderNg_A3"
+author: "Alexander Ng"
+date: "10/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load libraries, message=FALSE, warning=FALSE, echo=FALSE}
+library(censusapi)
+library(tidyverse)
+library(tigris)
+library(sf)
+library(leaflet)
+
+Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+```
+
+```{r temp files, message=FALSE, warning=FALSE, echo=FALSE}
+temp <- tempfile()
+download.file("https://www2.census.gov/programs-surveys/acs/data/pums/2019/1-Year/csv_hca.zip",destfile = temp)
+
+pums_hca_2019_1yr <- read_csv(unzip(temp,"psam_h06.csv"))
+
+unlink(temp)
+```
+
+```{r pull up data, message=FALSE, warning=FALSE, echo=FALSE}
+
+pums_2019_1yr <- getCensus(
+  name = "acs/acs1/pums",
+  vintage = 2019,
+  region = "public use microdata area:*", 
+  regionin = "state:06",
+  vars = c(
+    "SERIALNO",
+    "SPORDER",
+    "PWGTP",
+    "WGTP",
+    "NP",
+    "HHL",
+    "HINCP",
+    "TEN",
+    "AGEP",
+    "FBATHP",
+    "FRWATP"
+  )
+)
+
+```
+
+```{r filter relevant fields, message=FALSE, warning=FALSE, echo=FALSE}
+
+ca_pumas <-pumas("CA", cb = T, progress_bar = F)
+
+bay_county_names <-
+  c(
+    "Alameda",
+    "Contra Costa",
+    "Marin",
+    "Napa",
+    "San Francisco",
+    "San Mateo",
+    "Santa Clara",
+    "Solano",
+    "Sonoma"
+  )
+
+bay_counties <-
+  counties("CA", cb = T, progress_bar = F) %>%
+  filter(NAME %in% bay_county_names)
+
+bay_pumas <-
+  ca_pumas %>% 
+  st_centroid() %>% 
+  .[bay_counties, ] %>% 
+  st_drop_geometry() %>% 
+  left_join(ca_pumas %>% select(GEOID10)) %>% 
+  st_as_sf()
+
+bay_pums <-
+  pums_2019_1yr %>% 
+  mutate(
+    PUMA = str_pad(public_use_microdata_area,5,"left","0")
+  ) %>% 
+  filter(PUMA %in% bay_pumas$PUMACE10)
+
+```
+
+```{r identify household specific criteria based on susceptibility to heat injuries, message=FALSE, warning=FALSE, echo=FALSE}
+
+bay_pums_heat <-
+  bay_pums %>% 
+  mutate(
+    PWGTP = as.numeric(PWGTP),
+    elder_nobath_nocoldwater = ifelse(
+      (AGEP >= 65) & #select elderly aged 65 & over
+        (FBATHP == 0) & #select no bath in home
+        (FRWATP == 0), #select no access to running water
+      PWGTP,
+      0
+    )
+  ) %>% 
+  group_by(PUMA) %>% 
+  summarize(
+    sum_elder_nobath_nocoldwater = sum(elder_nobath_nocoldwater, na.rm = T),
+    sum_perc_elder_nobath_nocoldwater =
+      sum(elder_nobath_nocoldwater, na.rm =T)/sum(PWGTP, na.rm = T)*100
+  ) %>% 
+  left_join(
+    bay_pumas %>% 
+      select(PUMACE10),
+    by = c("PUMA" = "PUMACE10")
+  ) %>% 
+  st_as_sf()
+
+```
+
+```{r sum, message=FALSE, warning=FALSE, echo=FALSE}
+sum <- sum(bay_pums_heat$sum_elder_nobath_nocoldwater)
+```
+
+
+```{r plot map, message=FALSE, warning=FALSE, echo=FALSE}
+pums_pal <- colorNumeric(
+  palette = "Oranges",
+  domain = bay_pums_heat$sum_elder_nobath_nocoldwater
+)
+
+leaflet() %>%
+  addTiles() %>% 
+  addPolygons(
+    data = bay_pums_heat,
+    fillColor = ~pums_pal(sum_elder_nobath_nocoldwater),
+    color = "white",
+    opacity = 0.5,
+    fillOpacity = 0.5,
+    weight = 1,
+    label = ~paste0(
+      round(sum_elder_nobath_nocoldwater), 
+      " No. of Elderly with no access no baths and cold water"
+    ),
+    highlightOptions = highlightOptions(
+      weight = 2,
+      opacity = 1
+    )
+  ) %>% 
+  addLegend(
+    data = bay_pums_heat,
+    pal = pums_pal,
+    values = ~sum_elder_nobath_nocoldwater,
+    title = " No. of Elderly with no access to baths and cold water"
+  )
+
+```
+
+## General Observations
+
+The above data map tracks elderly population in the Bay Area who do not have access to baths/showers and cold running water as this is the community identified to be the most vulnerable to heat dangers. Lack of access to baths and cold running water means that there is a higher risk of heat injuries within this demographic group. From the PUMS analysis,there are approximately 1.4 million observed individuals within the Bay Area who classify as such in 2019.
+
+From the heat map, it appears that there is a wide geographical spread of these vulnerable individuals, with the heaviest concentration observed residing in Sonoma and Alameda counties. The wide geographical range across suburbs that are not well-served by highway infrastructure may pose some logistical planning challenges, particularly for emergency response teams who are responding to heat-related emergencies in the Bay Area. City planning officials can consider taking steps such as allocating more resources for temporary housing shelters in counties with higher concentrations of vulnerable individuals to facilitate faster response and treatment during heat emergencies.
