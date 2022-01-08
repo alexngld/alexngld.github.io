@@ -1,0 +1,97 @@
+---
+title: "Assignment1_218y"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(tigris)
+library(censusapi)
+library(sf)
+library(leaflet)
+
+Sys.setenv(CENSUS_KEY="0f0e2bffc9d96d5405bcb932e25318a4edb32602")
+
+acs_vars_2019_5yr <-
+  listCensusMetadata(
+    name = "2019/acs/acs5",
+    type = "variables"
+  )
+```
+
+```{r}
+epa_renter_data <- getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "block group:*", 
+    regionin = "state:06+county:081+tract:612000,611800,611900,612100",
+    vars = "group(B25074)"
+  ) %>%
+  mutate(
+    cbg =
+      paste0(state,county,tract,block_group)
+  ) %>% 
+  select(!c(GEO_ID,state,county,tract,block_group,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_5yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>%
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"income","percent"),
+    sep = "!!"
+  ) %>% 
+  filter(estimate != 0) %>%
+  group_by(percent,cbg) %>%
+  summarize(estimate = sum(estimate)) 
+
+
+epa_renter_data$percent[epa_renter_data$percent=="Less than 20.0 percent"]<- "20.0 percent or less" 
+    
+epa_renter_data <- epa_renter_data[c(64:75,1:63,76:nrow(epa_renter_data)), ]
+
+epa_blocks <- block_groups("CA", "San Mateo", cb = T, progress_bar = F) %>%
+  filter(TRACTCE == 612000 | TRACTCE == 611800 | TRACTCE == 611900 | TRACTCE == 612100) 
+
+epa_renter_filtered <- epa_renter_data %>%
+  left_join(epa_blocks, by = c("cbg" = "GEOID")) %>%
+  select(cbg, estimate, percent, geometry) %>%
+  filter(!is.na(percent), percent != "Not computed") %>%
+  mutate(percent = case_when(
+    percent == "20.0 percent or less" ~ "Not Burdened",
+    percent == "20.0 to 24.9 percent" ~ "Not Burdened",
+    percent == "25.0 to 29.9 percent" ~ "Not Burdened",
+    percent == "30.0 to 34.9 percent" ~ "Burdened",
+    percent == "35.0 to 39.9 percent" ~ "Burdened",
+    percent == "40.0 to 49.9 percent" ~ "Burdened",
+    percent == "50.0 percent or more" ~ "Severely Burdened"
+  )) %>%
+  dplyr::rename(BurdenStatus = percent)
+  
+
+
+```
+
+```{r}
+
+epa_owner_data <- getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "block group:*", 
+    regionin = "state:06+county:081+tract:612000,611800,611900,612100",
+    vars = "group(B25095)"
+  ) 
+
+
+
+epa_cbgs <- block_groups("CA", "San Mateo", cb = T, progress_bar = F)
+```
+
