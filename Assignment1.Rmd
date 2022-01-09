@@ -74,11 +74,39 @@ epa_renter_filtered <- epa_renter_data %>%
     percent == "40.0 to 49.9 percent" ~ "Burdened",
     percent == "50.0 percent or more" ~ "Severely Burdened"
   )) %>%
-  dplyr::rename(BurdenStatus = percent)
-  
-
+  dplyr::rename(BurdenStatus = percent) %>%
+  st_as_sf()
 
 ```
+
+```{r}
+burden_pal1 <- colorNumeric(
+  palette = "Purples",
+  domain = epa_renter_filtered$estimate
+)
+
+epa_renter_filtered %>% 
+  leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addPolygons(
+    fillColor = ~burden_pal1(estimate),
+    fillOpacity = 0.5,
+    color = "white",
+    weight = 0.5,
+    label = ~paste0(estimate, "Burdened Households"),
+    highlightOptions = highlightOptions(
+      weight = 2
+    )
+  ) %>% 
+  addLegend(
+    pal = burden_pal1,
+    values = ~estimate,
+    title = "Household Burden Distribution in East Palo Alto"
+  )
+
+```
+
+
 
 ```{r}
 
