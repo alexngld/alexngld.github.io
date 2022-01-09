@@ -66,46 +66,103 @@ epa_renter_filtered <- epa_renter_data %>%
   select(cbg, estimate, percent, geometry) %>%
   filter(!is.na(percent), percent != "Not computed") %>%
   mutate(percent = case_when(
-    percent == "20.0 percent or less" ~ "Not Burdened",
-    percent == "20.0 to 24.9 percent" ~ "Not Burdened",
-    percent == "25.0 to 29.9 percent" ~ "Not Burdened",
+    percent == "20.0 percent or less" ~ "NotBurdened",
+    percent == "20.0 to 24.9 percent" ~ "NotBurdened",
+    percent == "25.0 to 29.9 percent" ~ "NotBurdened",
     percent == "30.0 to 34.9 percent" ~ "Burdened",
     percent == "35.0 to 39.9 percent" ~ "Burdened",
     percent == "40.0 to 49.9 percent" ~ "Burdened",
-    percent == "50.0 percent or more" ~ "Severely Burdened"
+    percent == "50.0 percent or more" ~ "SeverelyBurdened"
   )) %>%
   dplyr::rename(BurdenStatus = percent) %>%
-  st_as_sf()
+  group_by(cbg,BurdenStatus)  %>%
+  summarise(
+    estimate = sum(estimate)
+  ) %>%
+  pivot_wider(
+    names_from = 'BurdenStatus',
+    values_from = 'estimate'
+  )  %>%
+  left_join(epa_blocks, by = c("cbg" = "GEOID")) %>%
+  select(cbg, NotBurdened, Burdened, SeverelyBurdened, geometry) %>%
+   st_as_sf()
 
 ```
 
 ```{r}
 burden_pal1 <- colorNumeric(
-  palette = "Purples",
-  domain = epa_renter_filtered$estimate
+  palette = "RdYlBu",
+  domain = epa_renter_filtered$NotBurdened
+)
+
+burden_pal2 <- colorNumeric(
+  palette = "PuOr",
+  domain = epa_renter_filtered$Burdened
+)
+
+burden_pal3 <- colorNumeric(
+  palette = "PRGn",
+  domain = epa_renter_filtered$SeverelyBurdened
 )
 
 epa_renter_filtered %>% 
   leaflet() %>% 
   addProviderTiles(provider = providers$CartoDB.Positron) %>% 
   addPolygons(
-    fillColor = ~burden_pal1(estimate),
+    fillColor = ~burden_pal1(NotBurdened),
     fillOpacity = 0.5,
     color = "white",
     weight = 0.5,
-    label = ~paste0(estimate, "Burdened Households"),
+    label = ~paste0(NotBurdened, " No. of Unburdened Households"),
+    group = 'NotBurdened',
     highlightOptions = highlightOptions(
       weight = 2
     )
   ) %>% 
+  addPolygons(
+    fillColor = ~burden_pal2(Burdened),
+    fillOpacity = 0.5,
+    color = "white",
+    weight = 0.5,
+    label = ~paste0(Burdened, " No. of Burdened Households"),
+    group = 'Burdened',
+    highlightOptions = highlightOptions(
+      weight = 2
+    )
+  ) %>%
+  addPolygons(
+    fillColor = ~burden_pal3(SeverelyBurdened),
+    fillOpacity = 0.5,
+    color = "white",
+    weight = 0.5,
+    label = ~paste0(SeverelyBurdened , " No. of Severely burdened Households"),
+    group = 'SeverelyBurdened',
+    highlightOptions = highlightOptions(
+      weight = 2
+    ) 
+    ) %>%
   addLegend(
     pal = burden_pal1,
-    values = ~estimate,
-    title = "Household Burden Distribution in East Palo Alto"
-  )
+    values = ~NotBurdened,
+    title = "Non-Burdened Household Distribution in East Palo Alto"
+  ) %>%
+    addLegend(
+    pal = burden_pal2,
+    values = ~Burdened,
+    title = "Burdened Household Distribution in East Palo Alto"
+  ) %>%
+    addLegend(
+    pal = burden_pal3,
+    values = ~SeverelyBurdened,
+    title = "Severely Burdened Household Distribution in East Palo Alto"
+  ) %>%
+    addLayersControl(
+    overlayGroups = c('NotBurdened', 'Burdened', 'SeverelyBurdened'),
+    options = layersControlOptions(collapsed = FALSE),
+    position = 'topleft'
+    )
 
 ```
-
 
 
 ```{r}
@@ -116,10 +173,81 @@ epa_owner_data <- getCensus(
     region = "block group:*", 
     regionin = "state:06+county:081+tract:612000,611800,611900,612100",
     vars = "group(B25095)"
+  ) %>%
+  mutate(
+    cbg =
+      paste0(state,county,tract,block_group)
+  ) %>% 
+  select(!c(GEO_ID,state,county,tract,block_group,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_5yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>%
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"income","percent"),
+    sep = "!!"
+  ) %>% 
+  filter(estimate != 0) %>%
+  group_by(percent,cbg) %>%
+  summarize(estimate = sum(estimate)) 
+
+
+```
+
+
+```{r}
+#smtaxdata <- read_csv("Secured_Property_Taxes.csv")
+
+```
+
+```{r}
+smtaxfilter<- smtaxdata %>%
+  separate(
+    `Situs Address`, 
+    into= c("Address", "City"),
+    sep=","
+  ) %>%
+  filter(
+    City == " EAST PALO ALTO"
   ) 
 
+smtaxepa<-smtaxfilter %>%
+  filter(
+    Exemption == 0 | Exemption == 5600 | Exemption == 7000
+  ) %>%
+  mutate(
+    Tenure = if_else(
+      Exemption == 0, 'Renter', 'Owner'
+    )
+  ) %>%
+  dplyr::rename(
+    APN = `Parcel Number`
+  ) %>%
+  dplyr::mutate_at(
+    vars(APN), list(~as.numeric(str_replace_all(.,"-","")
+        ))) 
+```
 
+```{r}
+install_github("yonghah/esri2sf")
+library(esri2sf)
 
-epa_cbgs <- block_groups("CA", "San Mateo", cb = T, progress_bar = F)
+epa_zoning <- esri2sf("https://services8.arcgis.com/0IC8hha3hgQkmGoa/arcgis/rest/services/EastPaloAltoZoning_2021_WFL1/FeatureServer/1") 
+
+epa_zoning$APN <- as.numeric(epa_zoning$APN)
+
+epazonemap <- smtaxepa %>%
+  left_join(
+    as.data.frame(epa_zoning)
+  )
+
 ```
 
