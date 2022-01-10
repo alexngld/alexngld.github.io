@@ -204,7 +204,7 @@ epa_owner_data <- getCensus(
 
 
 ```{r}
-#smtaxdata <- read_csv("Secured_Property_Taxes.csv")
+smtaxdata <- read_csv("Secured_Property_Taxes.csv")
 
 ```
 
@@ -233,7 +233,14 @@ smtaxepa<-smtaxfilter %>%
   ) %>%
   dplyr::mutate_at(
     vars(APN), list(~as.numeric(str_replace_all(.,"-","")
-        ))) 
+        ))) %>%
+  filter(
+    `Fiscal Year` == "2018/2019"
+  )
+  
+smtaxepa$APN=paste0(0,smtaxepa$APN)
+
+
 ```
 
 ```{r}
@@ -242,11 +249,22 @@ library(esri2sf)
 
 epa_zoning <- esri2sf("https://services8.arcgis.com/0IC8hha3hgQkmGoa/arcgis/rest/services/EastPaloAltoZoning_2021_WFL1/FeatureServer/1") 
 
-epa_zoning$APN <- as.numeric(epa_zoning$APN)
-
-epazonemap <- smtaxepa %>%
+epazonemap <- epa_zoning %>%
   left_join(
-    as.data.frame(epa_zoning)
+  smtaxepa
+  )
+
+leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = epazonemap,
+    fill = F
+  ) %>% 
+  addPolygons(
+    data = epazonemap,
+    fillColor = ~ifelse(Tenure == "Renter", "red", "blue"),
+    color = ~ifelse(Tenure == "Renter", "red", "blue"),
+    weight = 0.5,
   )
 
 ```
