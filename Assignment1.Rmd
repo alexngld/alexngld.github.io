@@ -244,6 +244,7 @@ smtaxepa$APN=paste0(0,smtaxepa$APN)
 ```
 
 ```{r}
+library(remotes)
 install_github("yonghah/esri2sf")
 library(esri2sf)
 
