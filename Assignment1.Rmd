@@ -25,7 +25,7 @@ epa_renter_data <- getCensus(
     name = "acs/acs5",
     vintage = 2019,
     region = "block group:*", 
-    regionin = "state:06+county:081+tract:612000,611800,611900,612100",
+    regionin = "state:06+county:081+place:*",
     vars = "group(B25074)"
   ) %>%
   mutate(
@@ -204,7 +204,7 @@ epa_owner_data <- getCensus(
 
 
 ```{r}
-smtaxdata <- read_csv("Secured_Property_Taxes.csv")
+smtaxdata <- readRDS("smtaxdata.RDS")
 
 ```
 
