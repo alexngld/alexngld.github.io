@@ -10,6 +10,7 @@ library(tigris)
 library(censusapi)
 library(sf)
 library(leaflet)
+library(htmltools)
 
 Sys.setenv(CENSUS_KEY="0f0e2bffc9d96d5405bcb932e25318a4edb32602")
 
@@ -25,7 +26,7 @@ epa_renter_data <- getCensus(
     name = "acs/acs5",
     vintage = 2019,
     region = "block group:*", 
-    regionin = "state:06+county:081+place:*",
+    regionin = "state:06+county:081+tract:612000,611800,611900,612100",
     vars = "group(B25074)"
   ) %>%
   mutate(
@@ -51,7 +52,7 @@ epa_renter_data <- getCensus(
   ) %>% 
   filter(estimate != 0) %>%
   group_by(percent,cbg) %>%
-  summarize(estimate = sum(estimate)) 
+  summarize(estimate = sum(estimate))
 
 
 epa_renter_data$percent[epa_renter_data$percent=="Less than 20.0 percent"]<- "20.0 percent or less" 
@@ -144,17 +145,17 @@ epa_renter_filtered %>%
   addLegend(
     pal = burden_pal1,
     values = ~NotBurdened,
-    title = "Non-Burdened Household Distribution in East Palo Alto"
+    title = "Non-Burdened Renter Household Distribution in East Palo Alto"
   ) %>%
     addLegend(
     pal = burden_pal2,
     values = ~Burdened,
-    title = "Burdened Household Distribution in East Palo Alto"
+    title = "Burdened Renter Household Distribution in East Palo Alto"
   ) %>%
     addLegend(
     pal = burden_pal3,
     values = ~SeverelyBurdened,
-    title = "Severely Burdened Household Distribution in East Palo Alto"
+    title = "Severely Burdened Renter Household Distribution in East Palo Alto"
   ) %>%
     addLayersControl(
     overlayGroups = c('NotBurdened', 'Burdened', 'SeverelyBurdened'),
@@ -164,21 +165,162 @@ epa_renter_filtered %>%
 
 ```
 
-
 ```{r}
+epa_tracts <- tracts("CA", "San Mateo")
 
 epa_owner_data <- getCensus(
     name = "acs/acs5",
     vintage = 2019,
-    region = "block group:*", 
-    regionin = "state:06+county:081+tract:612000,611800,611900,612100",
+    region = "tract:*", 
+    regionin = "state:06+county:081",
     vars = "group(B25095)"
-  ) %>%
-  mutate(
-    cbg =
-      paste0(state,county,tract,block_group)
   ) %>% 
-  select(!c(GEO_ID,state,county,tract,block_group,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  filter(tract == 612000 | tract == 611800 | tract == 611900 | tract == 612100) %>%
+  select(!c(NAME,state,county) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate",
+  ) %>%
+  left_join(
+    acs_vars_2019_5yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>%
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"income","percent"),
+    sep = "!!"
+  ) %>% 
+  filter(estimate != 0) %>%
+  group_by(percent,tract) %>%
+  summarize(estimate = sum(estimate)) %>%
+  filter(percent != "Not computed", !is.na(percent))
+
+epa_owner_data$percent[epa_owner_data$percent=="Less than 20.0 percent"]<- "20.0 percent or less"
+
+epa_owner_filtered <- epa_owner_data %>%
+  left_join(epa_tracts, by = c("tract" = "TRACTCE")) %>%
+  select(tract, estimate, percent, geometry) %>%
+  filter(!is.na(percent), percent != "Not computed") %>%
+  mutate(percent = case_when(
+    percent == "20.0 percent or less" ~ "NotBurdened",
+    percent == "20.0 to 24.9 percent" ~ "NotBurdened",
+    percent == "25.0 to 29.9 percent" ~ "NotBurdened",
+    percent == "30.0 to 34.9 percent" ~ "Burdened",
+    percent == "35.0 to 39.9 percent" ~ "Burdened",
+    percent == "40.0 to 49.9 percent" ~ "Burdened",
+    percent == "50.0 percent or more" ~ "SeverelyBurdened"
+  )) %>%
+  dplyr::rename(BurdenStatus = percent) %>%
+  group_by(tract,BurdenStatus)  %>%
+  summarise(
+    estimate = sum(estimate)
+  ) %>%
+  pivot_wider(
+    names_from = 'BurdenStatus',
+    values_from = 'estimate'
+  )  %>%
+  left_join(epa_tracts, by = c("tract" = "TRACTCE")) %>%
+  select(tract, NotBurdened, Burdened, SeverelyBurdened, geometry) %>%
+   st_as_sf()
+
+
+```
+
+
+
+```{r}
+burden_pal4 <- colorNumeric(
+  palette = "RdYlBu",
+  domain = epa_owner_filtered$NotBurdened
+)
+
+burden_pal5 <- colorNumeric(
+  palette = "PuOr",
+  domain = epa_owner_filtered$Burdened
+)
+
+burden_pal6 <- colorNumeric(
+  palette = "PRGn",
+  domain = epa_owner_filtered$SeverelyBurdened
+)
+
+epa_owner_filtered %>% 
+  leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addPolygons(
+    fillColor = ~burden_pal4(NotBurdened),
+    fillOpacity = 0.5,
+    color = "white",
+    weight = 0.5,
+    label = ~paste0(NotBurdened, " No. of Unburdened Households"),
+    group = 'NotBurdened',
+    highlightOptions = highlightOptions(
+      weight = 2
+    )
+  ) %>% 
+  addPolygons(
+    fillColor = ~burden_pal5(Burdened),
+    fillOpacity = 0.5,
+    color = "white",
+    weight = 0.5,
+    label = ~paste0(Burdened, " No. of Burdened Households"),
+    group = 'Burdened',
+    highlightOptions = highlightOptions(
+      weight = 2
+    )
+  ) %>%
+  addPolygons(
+    fillColor = ~burden_pal6(SeverelyBurdened),
+    fillOpacity = 0.5,
+    color = "white",
+    weight = 0.5,
+    label = ~paste0(SeverelyBurdened , " No. of Severely burdened Households"),
+    group = 'SeverelyBurdened',
+    highlightOptions = highlightOptions(
+      weight = 2
+    ) 
+    ) %>%
+  addLegend(
+    pal = burden_pal4,
+    values = ~NotBurdened,
+    title = "Non-Burdened Homeowner Household Distribution in East Palo Alto"
+  ) %>%
+    addLegend(
+    pal = burden_pal5,
+    values = ~Burdened,
+    title = "Burdened Homeowner Household Distribution in East Palo Alto"
+  ) %>%
+    addLegend(
+    pal = burden_pal6,
+    values = ~SeverelyBurdened,
+    title = "Severely Burdened Homeowner Household Distribution in East Palo Alto"
+  ) %>%
+    addLayersControl(
+    overlayGroups = c('NotBurdened', 'Burdened', 'SeverelyBurdened'),
+    options = layersControlOptions(collapsed = FALSE),
+    position = 'topleft'
+    )
+```
+
+
+```{r}
+epa_renter_data_1 <- getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "place:*", 
+    regionin = "state:06",
+    vars = "group(B25074)"
+  )
+
+epa_place <- places("CA") %>%
+  filter(PLACEFP == 20956)
+
+epa_renter_data_place <- epa_renter_data_1 %>%
+  filter(place == 20956) %>% 
+  select(!c(GEO_ID,state,place,NAME) & !ends_with(c("EA","MA","M"))) %>%
   pivot_longer(
     ends_with("E"),
     names_to = "variable",
@@ -194,14 +336,136 @@ epa_owner_data <- getCensus(
     label,
     into = c(NA,NA,"income","percent"),
     sep = "!!"
-  ) %>% 
-  filter(estimate != 0) %>%
-  group_by(percent,cbg) %>%
-  summarize(estimate = sum(estimate)) 
+  )  %>% 
+  filter(estimate != 0, !is.na(income), !is.na(percent), percent != "Not computed") %>%
+  mutate(percent = case_when(
+    percent == "Less than 20.0 percent" ~ "NotBurdened",
+    percent == "20.0 to 24.9 percent" ~ "NotBurdened",
+    percent == "25.0 to 29.9 percent" ~ "NotBurdened",
+    percent == "30.0 to 34.9 percent" ~ "Burdened",
+    percent == "35.0 to 39.9 percent" ~ "Burdened",
+    percent == "40.0 to 49.9 percent" ~ "Burdened",
+    percent == "50.0 percent or more" ~ "SeverelyBurdened"
+  )) %>%
+  dplyr::rename(BurdenStatus = percent) %>%
+  group_by(BurdenStatus)  %>%
+  summarise(
+    estimate = sum(estimate)
+  ) %>%
+  pivot_wider(
+    names_from = 'BurdenStatus',
+    values_from = 'estimate'
+  ) %>%
+  mutate(Total = Burdened + SeverelyBurdened + NotBurdened, GEOID = "0620956") %>%
+  left_join(epa_place) %>%
+  select(Burdened,SeverelyBurdened, NotBurdened,Total,geometry) %>%
+  st_as_sf() %>%
+  mutate(perc_not_burdened = NotBurdened/Total*100, perc_burdened = Burdened/Total*100, perc_severely_burdened = SeverelyBurdened/Total*100) 
+
+epa_renter_data_place$perc_not_burdened <- round(epa_renter_data_place$perc_not_burdened, digits = 2)
+epa_renter_data_place$perc_burdened <- round(epa_renter_data_place$perc_burdened, digits = 2)
+epa_renter_data_place$perc_severely_burdened <- round(epa_renter_data_place$perc_severely_burdened, digits = 2)
+
+leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = epa_renter_data_place,
+    fillColor = "yellow",
+    fillOpacity = 0.5,
+    weight = 0.5,
+    label = ~paste0(NotBurdened, " No. of Unburdened Renter Households = ", perc_not_burdened, "%;",
+                    Burdened, " No. of Burdened Renter Households = ", perc_burdened, "%;",
+                    SeverelyBurdened, " No. of Severely Burdened Renter Households = ", perc_severely_burdened, "%"),
+    highlightOptions = highlightOptions(
+      weight = 2
+    ))
+
+```
+
+```{r}
+epa_owner_data_1 <- getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "place:*", 
+    regionin = "state:06",
+    vars = "group(B25095)"
+  )
+
+epa_owner_data_place <- epa_owner_data_1 %>%
+  filter(place == 20956) %>% 
+  select(!c(GEO_ID,state,place,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_5yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>%
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"income","percent"),
+    sep = "!!"
+  )  %>% 
+  filter(estimate != 0, !is.na(income), !is.na(percent), percent != "Not computed") %>%
+  mutate(percent = case_when(
+    percent == "Less than 20.0 percent" ~ "NotBurdened",
+    percent == "20.0 to 24.9 percent" ~ "NotBurdened",
+    percent == "25.0 to 29.9 percent" ~ "NotBurdened",
+    percent == "30.0 to 34.9 percent" ~ "Burdened",
+    percent == "35.0 to 39.9 percent" ~ "Burdened",
+    percent == "40.0 to 49.9 percent" ~ "Burdened",
+    percent == "50.0 percent or more" ~ "SeverelyBurdened"
+  )) %>%
+  dplyr::rename(BurdenStatus = percent) %>%
+  group_by(BurdenStatus)  %>%
+  summarise(
+    estimate = sum(estimate)
+  ) %>%
+  pivot_wider(
+    names_from = 'BurdenStatus',
+    values_from = 'estimate'
+  ) %>%
+  mutate(Total = Burdened + SeverelyBurdened + NotBurdened, GEOID = "0620956") %>%
+  left_join(epa_place) %>%
+  select(Burdened,SeverelyBurdened,NotBurdened,Total,geometry) %>%
+  st_as_sf() %>%
+  mutate(perc_not_burdened = NotBurdened/Total*100, perc_burdened = Burdened/Total*100, perc_severely_burdened = SeverelyBurdened/Total*100)
+
+epa_owner_data_place$perc_not_burdened <- round(epa_owner_data_place$perc_not_burdened, digits = 2)
+epa_owner_data_place$perc_burdened <- round(epa_owner_data_place$perc_burdened, digits = 2)
+epa_owner_data_place$perc_severely_burdened <- round(epa_owner_data_place$perc_severely_burdened, digits = 2)
+
+leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = epa_owner_data_place,
+    fillOpacity = 0.5,
+    weight = 0.5,
+    label = ~paste0(NotBurdened, " No. of Unburdened Homeowner Households = ", perc_not_burdened, " percent; ", Burdened, " No. of Burdened Homeowner Households = ", perc_burdened, " percent; ", SeverelyBurdened, " No. of Severely Burdened Homeowner Households = ", perc_severely_burdened, " percent" ),
+    highlightOptions = highlightOptions(
+      weight = 2
+    ))
+```
+
+
+```{r}
+#OVERALL PERCENT OF RENTER OCCUPIED UNITS
+
+paste0("Overall Percentage of Renter Occupied Units: ", round(epa_renter_data_place$Total/(epa_renter_data_place$Total+epa_owner_data_place$Total)*100, digits = 2), "%")
+
+#PERCENTAGE OF SEVERELY BURDENED ARE RENTERS
+
+paste0("Overall Percentage of Severely Burdened Households that are Renter-Occupied Households: ", round(epa_renter_data_place$SeverelyBurdened/(epa_renter_data_place$SeverelyBurdened+epa_owner_data_place$SeverelyBurdened)*100, digits = 2), "%")
 
 
 ```
 
+
+# PART 2
 
 ```{r}
 smtaxdata <- readRDS("smtaxdata.RDS")
@@ -255,6 +519,7 @@ epazonemap <- epa_zoning %>%
   smtaxepa
   )
 
+
 leaflet() %>% 
   addProviderTiles(provider = providers$CartoDB.Positron) %>% 
   addPolygons(
@@ -262,11 +527,68 @@ leaflet() %>%
     fill = F
   ) %>% 
   addPolygons(
+    data = epa_place,
+    fillOpacity = 0,
+    label = "East Palo Alto Boundary"
+  ) %>% 
+  addPolygons(
     data = epazonemap,
     fillColor = ~ifelse(Tenure == "Renter", "red", "blue"),
     color = ~ifelse(Tenure == "Renter", "red", "blue"),
     weight = 0.5,
+    label = epazonemap$Tenure
+  ) 
+
+```
+
+#SINGLE FAMILY FILTER
+
+```{r}
+epa_singlefam <- epazonemap %>%
+  filter(New_Zone == "R-LD")
+
+leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = epa_singlefam,
+    fill = F
+  ) %>% 
+  addPolygons(
+    data = epa_place,
+    fillOpacity = 0,
+    label = "East Palo Alto Boundary"
+  ) %>%
+  addPolygons(
+    data = epa_singlefam,
+    fillColor = ~ifelse(Tenure == "Renter", "red", "blue"),
+    color = ~ifelse(Tenure == "Renter", "red", "blue"),
+    weight = 0.5,
+    label = epa_singlefam$Tenure
+  ) 
+  
+```
+
+#MORTGAGE ANALYSIS
+
+```{r}
+sm_names <-
+  c(
+    "San Mateo"
   )
 
+sm_counties <-
+  counties("CA", cb = T, progress_bar = F) %>%
+  filter(NAME %in% sm_names)
+
+ca_pumas <-
+  pumas("CA", cb = T, progress_bar = F)
+
+sm_pumas <-
+  ca_pumas %>% 
+  st_centroid() %>% 
+  .[sm_counties, ] %>% 
+  st_set_geometry(NULL) %>% 
+  left_join(ca_pumas %>% select(GEOID10)) %>% 
+  st_as_sf()
 ```
 
