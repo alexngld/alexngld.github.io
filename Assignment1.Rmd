@@ -11,6 +11,7 @@ library(censusapi)
 library(sf)
 library(leaflet)
 library(htmltools)
+library(tidycensus)
 
 Sys.setenv(CENSUS_KEY="0f0e2bffc9d96d5405bcb932e25318a4edb32602")
 
@@ -373,8 +374,8 @@ leaflet() %>%
     fillColor = "yellow",
     fillOpacity = 0.5,
     weight = 0.5,
-    label = ~paste0(NotBurdened, " No. of Unburdened Renter Households = ", perc_not_burdened, "%;",
-                    Burdened, " No. of Burdened Renter Households = ", perc_burdened, "%;",
+    label = ~paste0(NotBurdened, " No. of Unburdened Renter Households = ", perc_not_burdened, "%; ",
+                    Burdened, " No. of Burdened Renter Households = ", perc_burdened, "%; ",
                     SeverelyBurdened, " No. of Severely Burdened Renter Households = ", perc_severely_burdened, "%"),
     highlightOptions = highlightOptions(
       weight = 2
@@ -445,7 +446,9 @@ leaflet() %>%
     data = epa_owner_data_place,
     fillOpacity = 0.5,
     weight = 0.5,
-    label = ~paste0(NotBurdened, " No. of Unburdened Homeowner Households = ", perc_not_burdened, " percent; ", Burdened, " No. of Burdened Homeowner Households = ", perc_burdened, " percent; ", SeverelyBurdened, " No. of Severely Burdened Homeowner Households = ", perc_severely_burdened, " percent" ),
+    label = ~paste0(NotBurdened, " No. of Unburdened Homeowner Households = ", perc_not_burdened, "%; ",
+                    Burdened, " No. of Burdened Homeowner Households = ", perc_burdened, "%; ",
+                    SeverelyBurdened, " No. of Severely Burdened Homeowner Households = ", perc_severely_burdened, "%" ),
     highlightOptions = highlightOptions(
       weight = 2
     ))
@@ -568,28 +571,113 @@ leaflet() %>%
   
 ```
 
+#CHANGE IN RENTER & OWNER PROPORTION IN EPA
+
+```{r}
+sm_change <- smtaxfilter %>%
+  filter(
+    Exemption == 0 | Exemption == 5600 | Exemption == 7000
+  ) %>%
+  mutate(
+    Tenure = if_else(
+      Exemption == 0, 'Renter', 'Owner'
+    )
+  ) %>%
+  select(Tenure,`Fiscal Year`) %>%
+  group_by(Tenure, `Fiscal Year`) 
+
+population_change <- sm_change%>%
+  count(Tenure)%>%
+  rename("estimate" = "n")
+
+population_change %>%
+    ggplot()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))+
+    geom_line(
+    aes(
+      x = `Fiscal Year`,
+      y = estimate,
+      colour = Tenure, 
+      group = Tenure
+    ))+
+    labs(
+    x = "Fiscal Year",
+    y = "No. of Households",
+    title = "Distribution by Tenure between 2015 to 2019 in East Palo Alto",
+  ) 
+```
+#shows that increasing number of people are owning more than 1 home in EPA
+
 #MORTGAGE ANALYSIS
 
 ```{r}
-sm_names <-
-  c(
-    "San Mateo"
+epa_mortgage <- getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "place:*", 
+    regionin = "state:06",
+    vars = "group(B25106)"
+  ) %>%
+  filter(place == 20956) %>% 
+  select(!c(GEO_ID,state,place,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_5yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>%
+  select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"tenure","income", "percent"),
+    sep = "!!"
+  )  %>% 
+  filter(!is.na(income), !is.na(percent), !is.na(tenure)) %>%
+  mutate(percent = case_when(
+    percent == "Less than 20 percent" ~ 20,
+    percent == "20 to 29 percent" ~ 25,
+    percent == "30 percent or more" ~ 30,
+  )) %>%
+  group_by(tenure,income) %>%
+  mutate(
+    total = sum(estimate)
+  ) %>%
+  filter(percent==30)%>%
+  mutate(
+    perc_burden=estimate/total
+  ) %>%
+  select(
+    tenure,income,perc_burden
+  ) %>%
+ mutate(income=case_when(
+  income =="Less than $20,000:" ~"$20,000 or less",
+  income =="$20,000 to $34,999:" ~"$20,000 to $34,999",
+  income == "$35,000 to $49,999:"~"$35,000 to $49,999:",
+  income == "$50,000 to $74,999:"~"$50,000 to $74,999:",
+  income == "$75,000 or more:"~"$75,000 or more:"
+  )
   )
 
-sm_counties <-
-  counties("CA", cb = T, progress_bar = F) %>%
-  filter(NAME %in% sm_names)
 
-ca_pumas <-
-  pumas("CA", cb = T, progress_bar = F)
-
-sm_pumas <-
-  ca_pumas %>% 
-  st_centroid() %>% 
-  .[sm_counties, ] %>% 
-  st_set_geometry(NULL) %>% 
-  left_join(ca_pumas %>% select(GEOID10)) %>% 
-  st_as_sf()
-
+  epa_mortgage %>%
+    ggplot()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))+
+    geom_line(
+    aes(
+      x = income,
+      y = perc_burden,
+      colour = tenure, 
+      group = tenure
+    ))+
+    labs(
+    x = "Household Income Group",
+    y = "Proportion of Burdened households",
+    title = "Household Burden Proportion in East Palo Alto",
+  ) 
+  
 ```
 
