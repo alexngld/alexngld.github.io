@@ -590,5 +590,6 @@ sm_pumas <-
   st_set_geometry(NULL) %>% 
   left_join(ca_pumas %>% select(GEOID10)) %>% 
   st_as_sf()
+
 ```
 
