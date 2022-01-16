@@ -654,7 +654,7 @@ Figure 7: Trends in Homeowner & Renter Households between 2015-2019
 
 Figure 7 indicates that from 2015 to 2019, there is a gradual decline of owner-occupied households in East Palo Alto. When compared to renter-occupied households, this trend is reversed and there is a steady increase in renter-occupied households. There are some notable observations regarding this trend. For instance, it suggests that more homeowners in East Palo Alto over the past 5 years were able to acquire new property outside of the city and hence able to lease their previous residences out to tenants. In addition, it suggests that there are valid concerns amongst city officials regarding the issue of resident displacement within East Palo Alto leading to the enaction of the OPA, to increase homeowner residency in the city. 
 
-## Mortgage Analysis
+## Housing Cost Burden Analysis
 
 To better determine if the OPA could have debilitating financial effects on residents in East Palo Alto, this report analyses the distribution of existing housing cost burden based on household income. This was carried out using ACS data on tenure by housing costs as a percentage of household income over the past 12 months in East Palo Alto.
 
