@@ -746,3 +746,5 @@ This report also determined that housing cost-burden could be a significant conc
 Ultimately, this report takes an analytic approach to the problem using open source data and there are limitations to the ability for this report to address fully the salient issues relevant to the current OPA discussion. For example, a better way to identify if the OPA could help tenant-occupied households significantly is to carry out a city-wide survey to determine if there is indeed pent-up demand or desire for homeownership amongst renter-occupied households.
 
 
+Prepared by: Alexander Ng & Alessandro Kerr
+*Initial study approach and R analysis carried out jointly whereas report write-up prepared independently.
