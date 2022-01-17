@@ -446,7 +446,7 @@ epa_renter_filtered %>%
     )
 
 ```
-Figure 3: Housing Cost Burden Distribution by Blocks amongst Renter-occupied Households in East Palo Alto
+Figure 1: Housing Cost Burden Distribution by Blocks amongst Renter-occupied Households in East Palo Alto
 
 ```{r}
 burden_pal4 <- colorNumeric(
@@ -521,9 +521,9 @@ epa_owner_filtered %>%
     position = 'topleft'
     )
 ```
-Figure 4: Housing Cost Burden Distribution by Tracts among Owner-occupied Households in East Palo Alto
+Figure 2: Housing Cost Burden Distribution by Tracts among Owner-occupied Households in East Palo Alto
 
-The figures above reveal some interesting insights about housing cost burden distribution in the city. A significant number of households that face housing cost burden are congregated within the high density residential neighborhoods (Figure 3). A different distribution trend was observed among homeowners, where the majority of homeowner households that face housing cost burden were located in low density residential districts. This observation suggests that the OPA does have the potential to benefit a large population of tenants in East Palo Alto through inceased access to affordable housing costs in the city.
+The figures above reveal interesting insights on housing cost burden distribution in the city. A significant number of households that face housing cost burden are congregated within the high density residential neighborhoods (Figure 1). A different distribution trend was observed among homeowners where the majority of homeowner households facing housing cost burden were located in low density residential districts (Figure 2). While these observations may not be directly relevant to the OPA discussion, it suggests that there are other socio-economic reasons for housing cost burden within the community.
 
 ## Distribution of Homeowner-occupied versus Renter-occupied Households in East Palo Alto
 
@@ -605,7 +605,7 @@ leaflet() %>%
     label = epazonemap$Tenure
   ) 
 ```
-Figure 5: Parcel Distribution in East Palo Alto
+Figure 3: Parcel Distribution in East Palo Alto
 
 ```{r}
 epa_singlefam <- epazonemap %>%
@@ -632,9 +632,9 @@ leaflet() %>%
   ) 
   
 ```
-Figure 6: Single-Family Household Homeowner versus Renter Distribution in East Palo Alto
+Figure 4: Single-Family Household Homeowner versus Renter Distribution in East Palo Alto
 
-Figure 5 depicts the geographic distribution for all households whereas Figure 6 represents only single family dwellings in East Palo Alto. Based on this study, it appears that the distribution of homeowner versus renter households in the city is rather homogenous and there isn't a particular district or neighborhood where there is a significantly higher proportion of either homeowner or renter households.
+Figure 3 depicts the geographic distribution for all households whereas Figure 4 represents only single family dwellings in East Palo Alto. Based on this study, it appears that the distribution of homeowner versus renter households in the city is rather homogenous and there isn't a particular district or neighborhood where there is a significantly higher proportion of either homeowner or renter households.
 
 ## Trends in Homeowner versus Renter Households in East Palo Alto
 
@@ -677,9 +677,9 @@ population_change %>%
   ) 
 ```
 
-Figure 7: Trends in Homeowner & Renter Households between 2015-2019
+Figure 5: Trends in Homeowner & Renter Households between 2015-2019
 
-Figure 7 indicates that from 2015 to 2019, there is a gradual decline of homeowner-occupied households and matched in turn by a steady increase in renter-occupied households. This suggests there is a growing number of "absent landlords", hence validating the concerns among city officials that there is an increasing number of homes in East Palo Alto that are not homeowner-occupied. Therefore, the enaction of the OPA could indeed mitigate against this trend.
+Figure 5 indicates that from 2015 to 2019, there is a gradual decline of homeowner-occupied households and matched in turn by a steady increase in renter-occupied households. This suggests an increasing prevalence of "absent landlords" hence validating concerns raised over the increasing number of non owner-occupied properties in the city. Therefore, the enaction of the OPA could indeed mitigate against this trend.
 
 ## Housing Cost Burden Analysis
 
@@ -757,9 +757,9 @@ epa_mortgage %>%
   ) 
 ```
 
-Figure 8: Household Burden Distribution by Income Groups in East Palo Alto
+Figure 6: Household Burden Distribution by Income Groups in East Palo Alto
 
-From Figure 8, housing cost burden is an issue faced by both homeowners and renters in the lowest income group earning 20,000 or less with close to 80% of such households reporting as housing cost-burdened. As household income increases, housing cost burden appears to be less prevalent among owner-occupied properties and disappears almost entirely for high-income households earning above 75,000. 
+From Figure 6, housing cost burden is an issue faced by both homeowners and renters in the lowest income group earning 20,000 or less with close to 80% of such households reporting as housing cost-burdened. As household income increases, housing cost burden appears to be less prevalent among owner-occupied properties and disappears almost entirely for high-income households earning above 75,000. 
 
 To glean further insight into this issue, an analysis of housing cost burden was carried out using ACS data on tenure by household income (B25118) and comparing against an assumed monthly mortgage of $3500 (million dollar home serviced using a 30 year mortgage with 10% downpayment).
 
