@@ -14,10 +14,10 @@ The East Palo Alto Opportunity to Purchase Act (EPA OPA) is an opportunity for i
 
 Proponents of the EPA OPA believe that this instrument protects tenants from displacement through direct homeownership securing in turn, housing and rental affordability for East Palo Alto residents while promoting cultural stability. Detractors, however, perceive this policy as an unfair penalty to homeowners who stand to bear increased costs arising from additional bureaucracy. Furthermore, they argue they do not have adequate protection against Potential Eligible Purchasers who fail to act in good faith. 
 
-This report aims to provide an objective overview to the current discussion through the following:\n
-1) Determine how the OPA could impact housing burden in East Palo Alto from homeowners' and renters' perspectives;\n
-2) Uncover if there are residential districts of interest in East Palo Alto relevant to the OPA discussion; and\n
-3) Develop insights on homeownership/tenancy trends in East Palo Alto between 2015-2019
+This report aims to provide an objective overview to the current discussion through the following:<br>
+1) Determine how the OPA could impact housing burden in East Palo Alto from homeowners' and renters' perspectives;<br>
+2) Uncover if there are residential districts of interest in East Palo Alto relevant to the OPA discussion; and <br>
+3) Develop insights on homeownership/tenancy trends in East Palo Alto between 2015-2019.
 
 ```{r, include=FALSE}
 library(tidyverse)
@@ -30,6 +30,10 @@ library(htmltools)
 library(tidycensus)
 library(lemon)
 library(gridExtra)
+library(dplyr)
+library(formattable)
+library(tidyr)
+library(data.table)
 
 Sys.setenv(CENSUS_KEY="0f0e2bffc9d96d5405bcb932e25318a4edb32602")
 
@@ -43,7 +47,7 @@ acs_vars_2019_5yr <-
 
 ## Distribution of Housing Cost Burden in East Palo Alto
 
-The following figures outline the extent of housing burden distribution within East Palo Alto. This was determined by acessing ACS 5 year data to obtain information specifc to housing costs in relation to household income in East Palo Alto (B25074 & B25095) before applying geospatial mapping to provide a visual representation based on the granularity of available ACS data. For example, information relating to renter-householders were mapped at the block level whereas owner-households were mapped at the tract level.
+The following tables and figures outline the extent of housing burden distribution within East Palo Alto. This was determined by acessing ACS 5 year data to obtain information specifc to housing costs in relation to household income in East Palo Alto (B25074 & B25095) before applying geospatial mapping to provide a visual representation based on the granularity of available ACS data. For example, information relating to renter-occupied households were mapped at the block level whereas homeowner-occupied households were mapped at the tract level.
 
 ```{r, include=FALSE}
 epa_renter_data_1 <- getCensus(
@@ -95,7 +99,7 @@ epa_renter_data_place <- epa_renter_data_1 %>%
     names_from = 'BurdenStatus',
     values_from = 'estimate'
   ) %>%
-  mutate(Total = Burdened + SeverelyBurdened + NotBurdened, GEOID = "0620956") %>%
+  mutate(Total = NotBurdened + Burdened + SeverelyBurdened , GEOID = "0620956") %>%
   left_join(epa_place) %>%
   select(Burdened,SeverelyBurdened, NotBurdened,Total,geometry) %>%
   st_as_sf() %>%
@@ -104,6 +108,8 @@ epa_renter_data_place <- epa_renter_data_1 %>%
 epa_renter_data_place$perc_not_burdened <- round(epa_renter_data_place$perc_not_burdened, digits = 2)
 epa_renter_data_place$perc_burdened <- round(epa_renter_data_place$perc_burdened, digits = 2)
 epa_renter_data_place$perc_severely_burdened <- round(epa_renter_data_place$perc_severely_burdened, digits = 2)
+
+epa_renter_data_place <- epa_renter_data_place[, c(3, 1, 2, 4, 5,6,7,8)]
 
 ```
 
@@ -165,6 +171,8 @@ epa_owner_data_place$perc_not_burdened <- round(epa_owner_data_place$perc_not_bu
 epa_owner_data_place$perc_burdened <- round(epa_owner_data_place$perc_burdened, digits = 2)
 epa_owner_data_place$perc_severely_burdened <- round(epa_owner_data_place$perc_severely_burdened, digits = 2)
 
+epa_owner_data_place <- epa_owner_data_place[, c(3, 1, 2, 4, 5,6,7,8)]
+
 ```
 
 
@@ -176,10 +184,23 @@ epa_renter_table <- epa_renter_data_place %>%
   names(epa_renter_table)[5] <- "% Burdened"
   names(epa_renter_table)[6] <- "% Severely Burdened"
 
- print.data.frame(epa_renter_table)
+customGreen = "#71CA97"
+customRed = "#ff7f7f"
+  
+formattable(epa_renter_table, 
+            align =c("c","c","c","c","c","c","c","c"), 
+            list(
+  `Indicator Name` = formatter("span", style = ~ style(color = "grey",font.weight = "bold")), 
+  `NotBurdened`= color_tile(customGreen, customGreen),
+  `Burdened`= color_tile(customRed, customRed),
+  `SeverelyBurdened`= color_tile(customRed, customRed),
+  `% Non-burdened`= color_tile(customGreen, customGreen),
+  `% Burdened`= color_tile(customRed, customRed),
+  `% Severely Burdened`= color_tile(customRed, customRed)
+))
     
 ```
-Table 1: Housing Burden Distribution among Renter Households
+Table 1: Housing Burden Distribution among Renter-occupied Households
 
 ```{r}
 epa_owner_table <- epa_owner_data_place %>%
@@ -189,9 +210,19 @@ epa_owner_table <- epa_owner_data_place %>%
   names(epa_owner_table)[5] <- "% Burdened"
   names(epa_owner_table)[6] <- "% Severely Burdened"
 
- print.data.frame(epa_owner_table)
+formattable(epa_owner_table, 
+            align =c("c","c","c","c", "c", "c", "c"), 
+            list(
+  `Indicator Name` = formatter("span", style = ~ style(color = "grey",font.weight = "bold")), 
+  `NotBurdened`= color_tile(customGreen, customGreen),
+  `Burdened`= color_tile(customRed, customRed),
+  `SeverelyBurdened`= color_tile(customRed, customRed),
+  `% Non-burdened`= color_tile(customGreen, customGreen),
+  `% Burdened`= color_tile(customRed, customRed),
+  `% Severely Burdened`= color_tile(customRed, customRed)
+))
 ```
-Table 2: Housing Burden Distribution among Owner Households
+Table 2: Housing Burden Distribution among Homeowner-occupied Households
 
 ```{r}
 #OVERALL PERCENT OF RENTER OCCUPIED UNITS
@@ -203,7 +234,7 @@ paste0("Overall Percentage of Renter Occupied Units: ", round(epa_renter_data_pl
 paste0("Overall Percentage of Severely Burdened Households that are Renter-Occupied Households: ", round(epa_renter_data_place$SeverelyBurdened/(epa_renter_data_place$SeverelyBurdened+epa_owner_data_place$SeverelyBurdened)*100, digits = 2), "%")
 ```
 
-The above information indicates that approximately 59% of all households in East Palo Alto are renter-occupied units. In addition, more tenants in the city are housing cost-burdened as compared to homeowners. For instance, approximately 67% of all severely burdened households are renter-occupied. This suggests that while there are merits for a policy like the OPA to increase homeownership in East Palo Alto, other aspects relevant to the policy implementation such as managing housing cost burden amongst prospective homeowners would need to be considered. This could be an important area for study as almost 60% of all tenants in East Palo Alto currently face housing cost burden (Figure 1) as compared to just over 40% of all homeowners in East Palo Alto (Figure 2).
+From Tables 1 & 2, approximately 59% of all households in East Palo Alto are renter-occupied with the remaining households homeowner-occupied. In addition, tenants in the city are more likely to face housing cost-burdened as compared to homeowners. This can be seen from the above tables, where approximately 67% of all severely burdened households are renter-occupied. This suggests that while there are merits for a policy like the OPA to increase homeownership in East Palo Alto, other aspects relevant to the policy implementation such as managing housing cost burden amongst prospective homeowners would need to be considered. This could be an important area for study as almost 60% of all tenants in East Palo Alto currently face housing cost burden as compared to just over 40% of all homeowners.
 
 
 ### Housing Cost Burden in East Palo Alto by geographic location
@@ -368,7 +399,7 @@ epa_renter_filtered %>%
     label = ~paste0(NotBurdened, " No. of Unburdened Households"),
     group = 'NotBurdened',
     highlightOptions = highlightOptions(
-      weight = 2
+      weight = 1
     )
   ) %>% 
   addPolygons(
@@ -379,7 +410,7 @@ epa_renter_filtered %>%
     label = ~paste0(Burdened, " No. of Burdened Households"),
     group = 'Burdened',
     highlightOptions = highlightOptions(
-      weight = 2
+      weight = 1
     )
   ) %>%
   addPolygons(
@@ -390,7 +421,7 @@ epa_renter_filtered %>%
     label = ~paste0(SeverelyBurdened , " No. of Severely burdened Households"),
     group = 'SeverelyBurdened',
     highlightOptions = highlightOptions(
-      weight = 2
+      weight = 1
     ) 
     ) %>%
   addLegend(
@@ -444,7 +475,7 @@ epa_owner_filtered %>%
     label = ~paste0(NotBurdened, " No. of Unburdened Households"),
     group = 'NotBurdened',
     highlightOptions = highlightOptions(
-      weight = 2
+      weight = 1
     )
   ) %>% 
   addPolygons(
@@ -455,7 +486,7 @@ epa_owner_filtered %>%
     label = ~paste0(Burdened, " No. of Burdened Households"),
     group = 'Burdened',
     highlightOptions = highlightOptions(
-      weight = 2
+      weight = 1
     )
   ) %>%
   addPolygons(
@@ -466,7 +497,7 @@ epa_owner_filtered %>%
     label = ~paste0(SeverelyBurdened , " No. of Severely burdened Households"),
     group = 'SeverelyBurdened',
     highlightOptions = highlightOptions(
-      weight = 2
+      weight = 1
     ) 
     ) %>%
   addLegend(
@@ -492,11 +523,11 @@ epa_owner_filtered %>%
 ```
 Figure 4: Housing Cost Burden Distribution by Tracts among Owner-occupied Households in East Palo Alto
 
-The figures above reveal some interesting insights about housing cost burden distribution in the city. A significant number of households that face housing cost burden are congregated within the high density residential neighborhoods (Figure 3). A different distribution trend was observed among homeowners, where the majority of homeowner households that face housing cost burden located in low density residential districts. This observation suggests that the OPA does have the potential to benefit a large population of tenants in East Palo Alto through inceased access to affordable housing costs in the city.
+The figures above reveal some interesting insights about housing cost burden distribution in the city. A significant number of households that face housing cost burden are congregated within the high density residential neighborhoods (Figure 3). A different distribution trend was observed among homeowners, where the majority of homeowner households that face housing cost burden were located in low density residential districts. This observation suggests that the OPA does have the potential to benefit a large population of tenants in East Palo Alto through inceased access to affordable housing costs in the city.
 
-## Distribution of Homeowner-occupied versus Rented-occupied Households in East Palo Alto
+## Distribution of Homeowner-occupied versus Renter-occupied Households in East Palo Alto
 
-Given the interesting disparity in geographical distribution within housing cost-burdened households, a study into the geographic distribution of homeowner versus renter-occupied households was carried out to determine if there are any districts with disproportional representation between these two groups. This was achieved by obtaining the tax data available from San Mateo County, and filtering these results to isolate the households by tenure-type. This data was subsequently overlaid against the East Palo Alto zoning map to obtain a geospatial visual representation of owner versus renter households.
+Given the interesting disparity in geographical distribution among housing cost-burdened households, a study into the geographic distribution of homeowner versus renter-occupied households was carried out to determine if there are any districts with disproportional representation between these two groups. This was achieved by obtaining the tax data available from San Mateo County, and filtering these results to isolate the households by tenure-type. This data was subsequently overlaid against the East Palo Alto zoning map to obtain a geospatial representation of owner versus renter households.
 
 ```{r, include = FALSE}
 smtaxdata <- readRDS("smtaxdata.RDS")
@@ -570,7 +601,7 @@ leaflet() %>%
     data = epazonemap,
     fillColor = ~ifelse(Tenure == "Renter", "red", "blue"),
     color = ~ifelse(Tenure == "Renter", "red", "blue"),
-    weight = 0.2,
+    weight = 1,
     label = epazonemap$Tenure
   ) 
 ```
@@ -589,20 +620,21 @@ leaflet() %>%
   addPolygons(
     data = epa_place,
     fillOpacity = 0,
-    label = "East Palo Alto Boundary"
+    label = "East Palo Alto Boundary",
+    weight = 0.5
   ) %>%
   addPolygons(
     data = epa_singlefam,
     fillColor = ~ifelse(Tenure == "Renter", "red", "blue"),
     color = ~ifelse(Tenure == "Renter", "red", "blue"),
-    weight = 0.2,
+    weight = 1,
     label = epa_singlefam$Tenure
   ) 
   
 ```
 Figure 6: Single-Family Household Homeowner versus Renter Distribution in East Palo Alto
 
-Figure 5 depicts the geographic distribution for all households whereas Figure 6 represents only single family dwellings in East Palo Alto. Based on this study, it appears that the distribution of homeowner versus renter households in the city is rather homogenous and there isn't a particular district or neighborhood where there is a significantly higher proportion of either homeowner or renter households. Comparing between Figures 5 & 6 however, a strict application to include only single family households appears to exclude many high-density residential dwellings in East Palo Alto. This points to a limiting potential for the OPA, in its current state, to benefit a significant proportion of tenant-occupied households.
+Figure 5 depicts the geographic distribution for all households whereas Figure 6 represents only single family dwellings in East Palo Alto. Based on this study, it appears that the distribution of homeowner versus renter households in the city is rather homogenous and there isn't a particular district or neighborhood where there is a significantly higher proportion of either homeowner or renter households.
 
 ## Trends in Homeowner versus Renter Households in East Palo Alto
 
@@ -647,12 +679,11 @@ population_change %>%
 
 Figure 7: Trends in Homeowner & Renter Households between 2015-2019
 
-Figure 7 indicates that from 2015 to 2019, there is a gradual decline of owner-occupied households in East Palo Alto. When compared to renter-occupied households, this trend is reversed and there is a steady increase in renter-occupied households. There are some notable observations regarding this trend. For instance, it suggests that more homeowners in East Palo Alto over the past 5 years were able to acquire new property outside of the city and hence able to lease their previous residences out to tenants. In addition, it suggests that there are valid concerns amongst city officials regarding the issue of resident displacement within East Palo Alto leading to the enaction of the OPA, to increase homeowner residency in the city. 
+Figure 7 indicates that from 2015 to 2019, there is a gradual decline of homeowner-occupied households and matched in turn by a steady increase in renter-occupied households. This suggests there is a growing number of "absent landlords", hence validating the concerns among city officials that there is an increasing number of homes in East Palo Alto that are not homeowner-occupied. Therefore, the enaction of the OPA could indeed mitigate against this trend.
 
 ## Housing Cost Burden Analysis
 
-To better determine if the OPA could have debilitating financial effects on residents in East Palo Alto, this report analyses the distribution of existing housing cost burden based on household income. This was carried out using ACS data on tenure by housing costs as a percentage of household income over the past 12 months in East Palo Alto.
-
+To better determine if the OPA could have significant financial implications among tenants in East Palo Alto, this report analyses the distribution of existing housing cost burden based on household income. This was carried out using ACS data on tenure by housing costs as a percentage of household income over the past 12 months in East Palo Alto.
 
 ```{r, include = FALSE}
 epa_mortgage <- getCensus(
@@ -728,66 +759,83 @@ epa_mortgage %>%
 
 Figure 8: Household Burden Distribution by Income Groups in East Palo Alto
 
-From Figure 8, housing cost burden is an issue faced by both homeowners and renters in the lowest income group earning 20,000 or less with close to 80% of such households reporting as housing cost-burdened. As household income increases, housing cost burden appears to be less prevalent among owner-occupied properties and disappears almost entirely for high-income households earning above 75,000. Should the OPA be enacted, it would be important for the city to study how low-middle income renter-occupied households are able to access sustainable financing means to service their mortgages.
+From Figure 8, housing cost burden is an issue faced by both homeowners and renters in the lowest income group earning 20,000 or less with close to 80% of such households reporting as housing cost-burdened. As household income increases, housing cost burden appears to be less prevalent among owner-occupied properties and disappears almost entirely for high-income households earning above 75,000. 
+
+To glean further insight into this issue, an analysis of housing cost burden was carried out using ACS data on tenure by household income (B25118) and comparing against an assumed monthly mortgage of $3500 (million dollar home serviced using a 30 year mortgage with 10% downpayment).
 
 ```{r}
-census_api_key("c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
-
-bay_county_names <-
-  c(
-    "San Mateo"
+epa_income_tenure <- getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "place:*",
+    regionin = "state:06",
+    vars = "group(B25118)"
   )
 
-bay_counties <-
-  counties("CA", cb = T, progress_bar = F) %>%
-  filter(NAME %in% bay_county_names)
+epa_income_tenure_1 <- epa_income_tenure %>%
+  filter(place == 20956) %>%
+  select(!c(GEO_ID,state,place,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_5yr %>%
+      select(name, label),
+    by = c("variable" = "name")
+  ) %>%
+  select(-variable) %>%
+  separate(
+    label,
+    into = c(NA,NA,"tenure","income"),
+    sep = "!!"
+  )  %>%
+  filter(estimate != 0, !is.na(income), !is.na(tenure)) %>%
+  mutate(income = case_when(
+    income == "Less than $5,000" ~ 2500,
+    income == "$5,000 to $9,999" ~ 7500,
+    income == "$10,000 to $14,999" ~ 12500,
+    income == "$15,000 to $19,999" ~ 17500,
+    income == "$20,000 to $24,999" ~ 22500,
+    income == "$25,000 to $34,999" ~ 30000,
+    income == "$35,000 to $49,999" ~ 42500,
+    income == "$50,000 to $74,999" ~ 62500,
+    income == "$75,000 to $99,999" ~ 82500,
+    income == "$100,000 to $149,999" ~ 125000,
+    income == "$150,000 or more" ~ 175000,
+  )) %>%
+  mutate(GEOID = "0620956") %>%
+  left_join(epa_place) %>%
+  select(estimate,tenure,income,GEOID,geometry) %>%
+  st_as_sf() %>%
+  mutate(rent = 3500*12) %>% #Based on $1,000,000 mortgage 30yr
+  filter(tenure == "Renter occupied:") %>%
+  mutate(Burden_perc = rent/income) %>%
+  mutate(Burden = ifelse(Burden_perc>0.3,1,0)) %>%
+  mutate(total_burden = ifelse(Burden == 1 ,estimate,0)) %>%
+  mutate(total_burden1 = sum(total_burden)) %>%
+  mutate(total_all = sum(estimate)) %>%
+  mutate(total_burden_perc = total_burden1/total_all)
 
-ca_pumas <-
-  pumas("CA", cb = T, progress_bar = F)
 
-bay_pumas <-
-  ca_pumas %>% 
-  st_centroid() %>% 
-  .[bay_counties, ] %>% 
-  st_set_geometry(NULL) %>% 
-  left_join(ca_pumas %>% select(GEOID10)) %>% 
-  st_as_sf()
-
-pums_vars_2019 <- 
-  pums_variables %>%
-  filter(year == 2019, survey == "acs5")
-
-ca_pums <- get_pums(
-  variables = c(
-    "PUMA",
-    "GRNTP",
-    "SMOCP",
-    "ADJHSG",
-    "HINCP",
-    "ADJINC"
-  ),
-  state = "CA",
-  year = 2019,
-  survey = "acs5"
-)
-
-bay_pums <-
-  ca_pums %>% 
-  filter(PUMA %in% bay_pumas$PUMACE10)
-
+paste0("Proportion of Renter-occupied households currently facing housing cost burden: ", epa_renter_data_place$perc_burdened+epa_renter_data_place$perc_severely_burdened, "%")
+epa_income_tenure_1$total_burden_perc <- round(epa_income_tenure_1$total_burden_perc, digits = 3)
+paste0("Proportion of existing renter-occupied households that would face housing cost burden if required to service average mortgage of $3500: ",epa_income_tenure_1$total_burden_perc[1]*100,"%")
 ```
 
+Given the high costs associated with purchasing a home in East Palo Alto, it would be important for the city to consider how current renter-occupied households could access sustainable financing and avoid housing cost burden transpiring into a debilitating issue for would-be homeowners in the journey towards asset ownership.
 
 ## Conclusion
 
-In carrying out an analysis on housing cost distribution and housing trends in East Palo Alto, this report had identified areas in which the OPA can potentially reverse declining trends in homeownership and highlighted other possible areas of concern relating to the policy such as financing burden within low-income households.
+In carrying out an analysis on housing cost distribution and housing trends in East Palo Alto, this report identified areas in which the OPA can potentially reverse declining trends in homeownership and highlighted other possible areas of concern relating to the policy such as financing burden on tenants.
 
-From this study, there are certainly merits to the OPA ordinance in addressing long-term residency and housing affordability in East Palo Alto. The declining trend in homeownership and high proportion of housing cost burden among low-income households for instance, are examples of how the OPA, if properly implemented, can potential benefit these stakeholder groups directly to either reverse the current declining trend or provide more affordable housing opportunities to low-income households. Even so, city officials should be aware that the current policy intent to include only single-family households may have a limiting effect on the potential of the OPA to benefit the wider tenant population.
+From this study, there are certainly merits to the OPA ordinance in addressing long-term residency and housing affordability in East Palo Alto. The declining trend in homeownership and high proportion of housing cost burden among low-income households are examples of how the OPA, if properly implemented, can have direct benefit to these stakeholder groups. There is potential for the OPA to either reverse the current declining trend or provide more affordable housing opportunities to residents in East Palo Alto.
 
-This report also determined that housing cost-burden could be a significant concern particularly among renter-occupied households. Apart from the fact that over 65% of all severely housing cost-burdened households are renter-occupied, housing cost burden appears to be significantly higher across most income levels in renter occupied households when compared against homeowner-occupied properties. Therefore, city officials should consider the financial impact of the OPA on renter-occupied households, particularly if home-ownership could exacerbate the issue of housing cost burden in East Palo Alto.
+This report also determined that housing cost-burden could be a significant concern particularly among renter-occupied households. Apart from the fact that over 65% of all severely housing cost-burdened households are renter-occupied, housing cost burden appears to be significantly higher across most income levels in renter-occupied households when compared against homeowner-occupied properties. Therefore, while there may be merits to the OPA in increasing home ownership, the financial implications of homeownership in a high housing cost location like East Palo Alto should be considered.
 
 Ultimately, this report takes an analytic approach to the problem using open source data and there are limitations to the ability for this report to address fully the salient issues relevant to the current OPA discussion. For example, a better way to identify if the OPA could help tenant-occupied households significantly is to carry out a city-wide survey to determine if there is indeed pent-up demand or desire for homeownership amongst renter-occupied households.
 
 
 Prepared by: Alexander Ng & Alessandro Kerr
-*Initial study approach and R analysis carried out jointly whereas report write-up prepared independently.
+*Initial study approach and R analysis carried out jointly whereas report write-up prepared independently incorporating comments from CEE218Y teaching team.
