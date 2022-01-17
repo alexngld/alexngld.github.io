@@ -28,6 +28,8 @@ library(sf)
 library(leaflet)
 library(htmltools)
 library(tidycensus)
+library(lemon)
+library(gridExtra)
 
 Sys.setenv(CENSUS_KEY="0f0e2bffc9d96d5405bcb932e25318a4edb32602")
 
@@ -167,37 +169,29 @@ epa_owner_data_place$perc_severely_burdened <- round(epa_owner_data_place$perc_s
 
 
 ```{r}
-leaflet() %>% 
-  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
-  addPolygons(
-    data = epa_renter_data_place,
-    fillColor = "yellow",
-    fillOpacity = 0.5,
-    weight = 0.5,
-    label = ~paste0(NotBurdened, " No. of Unburdened Renter Households = ", perc_not_burdened, "%; ",
-                    Burdened, " No. of Burdened Renter Households = ", perc_burdened, "%; ",
-                    SeverelyBurdened, " No. of Severely Burdened Renter Households = ", perc_severely_burdened, "%"),
-    highlightOptions = highlightOptions(
-      weight = 2
-    ))
+epa_renter_table <- epa_renter_data_place %>%
+  select(-Total) %>%
+  st_drop_geometry() 
+  names(epa_renter_table)[4] <- "% Non-burdened"
+  names(epa_renter_table)[5] <- "% Burdened"
+  names(epa_renter_table)[6] <- "% Severely Burdened"
+
+ print.data.frame(epa_renter_table)
+    
 ```
-Figure 1: Housing Burden Distribution amongst Renter-Households in East Palo Alto
+Table 1: Housing Burden Distribution among Renter Households
 
 ```{r}
-leaflet() %>% 
-  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
-  addPolygons(
-    data = epa_owner_data_place,
-    fillOpacity = 0.5,
-    weight = 0.5,
-    label = ~paste0(NotBurdened, " No. of Unburdened Homeowner Households = ", perc_not_burdened, "%; ",
-                    Burdened, " No. of Burdened Homeowner Households = ", perc_burdened, "%; ",
-                    SeverelyBurdened, " No. of Severely Burdened Homeowner Households = ", perc_severely_burdened, "%" ),
-    highlightOptions = highlightOptions(
-      weight = 2
-    ))
+epa_owner_table <- epa_owner_data_place %>%
+  select(-Total) %>%
+  st_drop_geometry() 
+  names(epa_owner_table)[4] <- "% Non-burdened"
+  names(epa_owner_table)[5] <- "% Burdened"
+  names(epa_owner_table)[6] <- "% Severely Burdened"
+
+ print.data.frame(epa_owner_table)
 ```
-Figure 2: Homeowner Household Burden Distribution in East Palo Alto
+Table 2: Housing Burden Distribution among Owner Households
 
 ```{r}
 #OVERALL PERCENT OF RENTER OCCUPIED UNITS
@@ -402,20 +396,20 @@ epa_renter_filtered %>%
   addLegend(
     pal = burden_pal1,
     values = ~NotBurdened,
-    title = "Non-Burdened Renter Household Distribution in East Palo Alto"
+    title = "Non-Burdened Renter<br>Household Distribution"
   ) %>%
     addLegend(
     pal = burden_pal2,
     values = ~Burdened,
-    title = "Burdened Renter Household Distribution in East Palo Alto"
+    title = "Burdened Renter<br>Household Distribution"
   ) %>%
     addLegend(
     pal = burden_pal3,
     values = ~SeverelyBurdened,
-    title = "Severely Burdened Renter Household Distribution in East Palo Alto"
+    title = "Severely Burdened Renter <br>Household Distribution"
   ) %>%
     addLayersControl(
-    overlayGroups = c('NotBurdened', 'Burdened', 'SeverelyBurdened'),
+    baseGroups = c('NotBurdened', 'Burdened', 'SeverelyBurdened'),
     options = layersControlOptions(collapsed = FALSE),
     position = 'topleft'
     )
@@ -478,20 +472,20 @@ epa_owner_filtered %>%
   addLegend(
     pal = burden_pal4,
     values = ~NotBurdened,
-    title = "Non-Burdened Homeowner Household Distribution in East Palo Alto"
+    title = "Non-Burdened Homeowner<br>Household Distribution"
   ) %>%
     addLegend(
     pal = burden_pal5,
     values = ~Burdened,
-    title = "Burdened Homeowner Household Distribution in East Palo Alto"
+    title = "Burdened Homeowner<br>Household Distribution"
   ) %>%
     addLegend(
     pal = burden_pal6,
     values = ~SeverelyBurdened,
-    title = "Severely Burdened Homeowner Household Distribution in East Palo Alto"
+    title = "Severely Burdened<br>Homeowner Household Distribution"
   ) %>%
     addLayersControl(
-    overlayGroups = c('NotBurdened', 'Burdened', 'SeverelyBurdened'),
+    baseGroups = c('NotBurdened', 'Burdened', 'SeverelyBurdened'),
     options = layersControlOptions(collapsed = FALSE),
     position = 'topleft'
     )
@@ -569,17 +563,18 @@ leaflet() %>%
   addPolygons(
     data = epa_place,
     fillOpacity = 0,
-    label = "East Palo Alto Boundary"
+    label = "East Palo Alto Boundary",
+    weight = 0.5
   ) %>% 
   addPolygons(
     data = epazonemap,
     fillColor = ~ifelse(Tenure == "Renter", "red", "blue"),
     color = ~ifelse(Tenure == "Renter", "red", "blue"),
-    weight = 0.5,
+    weight = 0.2,
     label = epazonemap$Tenure
   ) 
 ```
-Figure 5: Overall Homeowner versus Renter Distribution in East Palo Alto
+Figure 5: Parcel Distribution in East Palo Alto
 
 ```{r}
 epa_singlefam <- epazonemap %>%
@@ -600,12 +595,12 @@ leaflet() %>%
     data = epa_singlefam,
     fillColor = ~ifelse(Tenure == "Renter", "red", "blue"),
     color = ~ifelse(Tenure == "Renter", "red", "blue"),
-    weight = 0.5,
+    weight = 0.2,
     label = epa_singlefam$Tenure
   ) 
   
 ```
-Figure 6: Overall Single-Family Household Homeowner versus Renter Distribution in East Palo Alto
+Figure 6: Single-Family Household Homeowner versus Renter Distribution in East Palo Alto
 
 Figure 5 depicts the geographic distribution for all households whereas Figure 6 represents only single family dwellings in East Palo Alto. Based on this study, it appears that the distribution of homeowner versus renter households in the city is rather homogenous and there isn't a particular district or neighborhood where there is a significantly higher proportion of either homeowner or renter households. Comparing between Figures 5 & 6 however, a strict application to include only single family households appears to exclude many high-density residential dwellings in East Palo Alto. This points to a limiting potential for the OPA, in its current state, to benefit a significant proportion of tenant-occupied households.
 
@@ -734,6 +729,54 @@ epa_mortgage %>%
 Figure 8: Household Burden Distribution by Income Groups in East Palo Alto
 
 From Figure 8, housing cost burden is an issue faced by both homeowners and renters in the lowest income group earning 20,000 or less with close to 80% of such households reporting as housing cost-burdened. As household income increases, housing cost burden appears to be less prevalent among owner-occupied properties and disappears almost entirely for high-income households earning above 75,000. Should the OPA be enacted, it would be important for the city to study how low-middle income renter-occupied households are able to access sustainable financing means to service their mortgages.
+
+```{r}
+census_api_key("c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+
+bay_county_names <-
+  c(
+    "San Mateo"
+  )
+
+bay_counties <-
+  counties("CA", cb = T, progress_bar = F) %>%
+  filter(NAME %in% bay_county_names)
+
+ca_pumas <-
+  pumas("CA", cb = T, progress_bar = F)
+
+bay_pumas <-
+  ca_pumas %>% 
+  st_centroid() %>% 
+  .[bay_counties, ] %>% 
+  st_set_geometry(NULL) %>% 
+  left_join(ca_pumas %>% select(GEOID10)) %>% 
+  st_as_sf()
+
+pums_vars_2019 <- 
+  pums_variables %>%
+  filter(year == 2019, survey == "acs5")
+
+ca_pums <- get_pums(
+  variables = c(
+    "PUMA",
+    "GRNTP",
+    "SMOCP",
+    "ADJHSG",
+    "HINCP",
+    "ADJINC"
+  ),
+  state = "CA",
+  year = 2019,
+  survey = "acs5"
+)
+
+bay_pums <-
+  ca_pums %>% 
+  filter(PUMA %in% bay_pumas$PUMACE10)
+
+```
+
 
 ## Conclusion
 
