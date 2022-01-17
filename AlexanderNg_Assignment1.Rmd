@@ -679,7 +679,7 @@ population_change %>%
 
 Figure 5: Trends in Homeowner & Renter Households between 2015-2019
 
-Figure 5 indicates that from 2015 to 2019, there is a gradual decline of homeowner-occupied households and matched in turn by a steady increase in renter-occupied households. This suggests an increasing prevalence of "absent landlords" hence validating concerns raised over the increasing number of non owner-occupied properties in the city. Therefore, the enaction of the OPA could indeed mitigate against this trend.
+Figure 5 indicates that from 2015 to 2019, there is a gradual decline of homeowner-occupied households and matched in turn by a steady increase in renter-occupied households. This suggests an increasing prevalence of "absent landlords" hence validating concerns raised over the growing number of non owner-occupied properties in the city. Therefore, the enaction of the OPA could indeed mitigate against this trend.
 
 ## Housing Cost Burden Analysis
 
