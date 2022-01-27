@@ -126,6 +126,7 @@ isochrone_2 <- readRDS("isochrone_rwc_driving.RDS")
 
 
 # Use driving for hospital analysis. Use walking for other POIs. 
+
 ```
 
 
@@ -135,7 +136,6 @@ access_raw <- isochrone %>%
   st_join(smc_pois_filter) %>% 
   st_drop_geometry() %>% 
   filter(!is.na(osm_id))
-
 
 ```
 
