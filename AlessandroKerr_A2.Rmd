@@ -1,0 +1,140 @@
+---
+title: "AlessandroKerr_A2"
+author: "Alessandro Kerr"
+date: " February 1, 2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(tigris)
+library(censusapi)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(tidycensus)
+library(mapview)
+
+knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(warning = F, message = F)
+
+```
+
+```{r}
+path <- "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/NHTS/nhts17-caltrans-tsdc-download/"
+
+pois <- st_read("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/gis_osm_pois_a_free_1.shp")
+
+library(tidyverse)
+library(readxl)
+library(tigris)
+library(sf)
+library(leaflet)
+```
+
+```{r}
+pois_summary <- pois %>% 
+  st_drop_geometry() %>% 
+  group_by(fclass) %>% 
+  count() %>% 
+  arrange(desc(n))
+
+smc_boundary <- counties("CA") %>% 
+  filter(NAME == "San Mateo") %>% 
+  st_transform(st_crs(pois))
+
+smc_pois <- pois %>% 
+  .[smc_boundary, ] %>% 
+  rename(amenity = fclass)
+
+mapview(smc_pois, zcol = "amenity")
+
+#Let's not use all POIs lets filter down to differentiate
+
+smc_pois_filter <- smc_pois %>% 
+  filter(amenity %in% c(
+    "park",
+    "supermarket",
+    "pharmacy",
+    "bank",
+    "school",
+    "doctors",
+    "restaurant"
+  ))
+
+smc_pois_filter2 <- smc_pois %>% 
+  filter(amenity %in% c(
+    "hospital"))
+
+mapview(smc_pois_filter, zcol = "amenity")
+mapview(smc_pois_filter2, zcol = "amenity")
+```
+
+```{r}
+smc_cbs <- blocks("CA","San Mateo")
+
+rdw_boundary <- places("CA") %>% 
+  filter(NAME == "Redwood City")
+
+rdw_cbs <- smc_cbs %>% 
+  st_centroid() %>% 
+  .[rdw_boundary, ] %>% 
+  st_drop_geometry() %>% 
+  left_join(smc_cbs %>% select(GEOID10)) %>% 
+  st_as_sf()
+
+mapview(rdw_cbs)
+```
+
+```{r}
+devtools::install_github("walkerke/mapboxapi")
+
+library(mapboxapi)
+
+mb_access_token("sk.eyJ1IjoiYWxleG5nbGQiLCJhIjoiY2t5dnY3OGliMDJlaTMwcnIxeHd5bTJucyJ9.mZzy6K59_f5dGUlEQ8oL7Q", install = T)
+```
+
+```{r}
+# isochrone <- mb_isochrone(
+#   rdw_cbs,
+#   profile = "walking",
+#   time = c(5,10,15)
+# )
+# 
+# isochrone[1:3,] %>% mapview()
+# 
+# saveRDS(isochrone,"isochrone_rwc_walking.RDS")
+
+isochrone <- readRDS("isochrone_rwc_walking.RDS")
+
+mapview(isochrone)
+```
+
+```{r}
+# isochrone_2 <- mb_isochrone(
+#   rdw_cbs,
+#   profile = "driving",
+#   time = c(5,10,15)
+# )
+# 
+# isochrone_2[1:3,] %>% mapview
+# 
+#saveRDS(isochrone_2, "isochrone_rwc_driving.RDS")
+
+isochrone_2 <- readRDS("isochrone_rwc_driving.RDS")
+
+
+# Use driving for hospital analysis. Use walking for other POIs. 
+```
+
+
+```{r}
+access_raw <- isochrone %>% 
+  st_make_valid() %>% 
+  st_join(smc_pois_filter) %>% 
+  st_drop_geometry() %>% 
+  filter(!is.na(osm_id))
+
+```
+
