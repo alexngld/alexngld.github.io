@@ -15,6 +15,9 @@ library(leaflet)
 library(htmltools)
 library(tidycensus)
 library(mapview)
+library(dplyr)
+library(ggrepel)
+library(ggplot2)
 
 knitr::opts_chunk$set(echo = F)
 knitr::opts_chunk$set(warning = F, message = F)
@@ -26,73 +29,104 @@ path <- "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/NHTS/nhts17-caltra
 
 pois <- st_read("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/gis_osm_pois_a_free_1.shp")
 
-library(tidyverse)
-library(readxl)
-library(tigris)
-library(sf)
-library(leaflet)
 ```
 
 ```{r}
-pois_summary <- pois %>% 
-  st_drop_geometry() %>% 
-  group_by(fclass) %>% 
-  count() %>% 
-  arrange(desc(n))
-
-smc_boundary <- counties("CA") %>% 
-  filter(NAME == "San Mateo") %>% 
-  st_transform(st_crs(pois))
-
-smc_pois <- pois %>% 
-  .[smc_boundary, ] %>% 
-  rename(amenity = fclass)
-
-mapview(smc_pois, zcol = "amenity")
-
-#Let's not use all POIs lets filter down to differentiate
-
-smc_pois_filter <- smc_pois %>% 
-  filter(amenity %in% c(
-    "park",
-    "supermarket",
-    "pharmacy",
-    "bank",
-    "school",
-    "doctors",
-    "restaurant"
-  ))
-
-smc_pois_filter2 <- smc_pois %>% 
-  filter(amenity %in% c(
-    "hospital"))
-
-mapview(smc_pois_filter, zcol = "amenity")
-mapview(smc_pois_filter2, zcol = "amenity")
+# pois_summary <- pois %>% 
+#   st_drop_geometry() %>% 
+#   group_by(fclass) %>% 
+#   count() %>% 
+#   arrange(desc(n))
+# 
+# bay_county_names <-
+#   c(
+#     "Alameda",
+#     "Contra Costa",
+#     "Marin",
+#     "Napa",
+#     "San Francisco",
+#     "San Mateo",
+#     "Santa Clara",
+#     "Solano",
+#     "Sonoma"
+#   )
+# 
+# bay_counties <-
+#   counties("CA", cb = T, progress_bar = F) %>%
+#   filter(NAME %in% bay_county_names) %>%
+#   st_transform(st_crs(pois))
+# 
+# bay_pois <- pois %>% 
+#   .[bay_counties, ] %>% 
+#   rename(amenity = fclass)
+# 
+# mapview(bay_pois, zcol = "amenity")
+# 
+# #Let's not use all POIs lets filter down to differentiate
+# 
+# bay_pois_filter <- bay_pois %>% 
+#   filter(amenity %in% c(
+#     "park",
+#     "supermarket",
+#     "pharmacy",
+#     "bank",
+#     "school",
+#     "doctors",
+#     "restaurant",
+#     "bar",
+#     "pub",
+#     "pitch",
+#     "playground",
+#     "hospital",
+#     "theatre"
+#   ))
+# saveRDS(bay_pois_filter, "bay_pois_filter.RDS")
 ```
 
 ```{r}
-smc_cbs <- blocks("CA","San Mateo")
+# bay_pois_filter2 <- bay_pois %>% 
+#   filter(amenity %in% c(
+#     "hospital"))
+# 
+# saveRDS(bay_pois_filter2, "bay_pois_filter2.RDS")
+```
 
-rdw_boundary <- places("CA") %>% 
-  filter(NAME == "Redwood City")
+```{r}
+# smc_cbs <- blocks("CA","San Mateo")
+# 
+# rdw_boundary <- places("CA") %>% 
+#   filter(NAME == "Redwood City")
+# 
+# rdw_cbs <- smc_cbs %>% 
+#   st_centroid() %>% 
+#   .[rdw_boundary, ] %>% 
+#   st_drop_geometry() %>% 
+#   left_join(smc_cbs %>% select(GEOID10)) %>% 
+#   st_as_sf()
+# 
+# saveRDS(rdw_cbs, "rdw_cbs.RDS")
+```
 
-rdw_cbs <- smc_cbs %>% 
-  st_centroid() %>% 
-  .[rdw_boundary, ] %>% 
-  st_drop_geometry() %>% 
-  left_join(smc_cbs %>% select(GEOID10)) %>% 
-  st_as_sf()
+```{r}
+bay_pois_filter <- readRDS("bay_pois_filter.RDS")
+bay_pois_filter2 <- readRDS("bay_pois_filter2.RDS")
 
+mapview(bay_pois_filter, zcol = "amenity")
+mapview(bay_pois_filter2, zcol = "amenity")
+```
+
+```{r}
+rdw_cbs <- readRDS("rdw_cbs.RDS")
 mapview(rdw_cbs)
 ```
+
 
 ```{r}
 devtools::install_github("walkerke/mapboxapi")
 
 library(mapboxapi)
 
-mb_access_token("sk.eyJ1IjoiYWxleG5nbGQiLCJhIjoiY2t5dnY3OGliMDJlaTMwcnIxeHd5bTJucyJ9.mZzy6K59_f5dGUlEQ8oL7Q", install = T)
+mb_access_token("sk.eyJ1IjoiYWxleG5nbGQiLCJhIjoiY2t5dnY3OGliMDJlaTMwcnIxeHd5bTJucyJ9.mZzy6K59_f5dGUlEQ8oL7Q", install = T, overwrite = T)
 ```
 
 ```{r}
@@ -100,42 +134,429 @@ mb_access_token("sk.eyJ1IjoiYWxleG5nbGQiLCJhIjoiY2t5dnY3OGliMDJlaTMwcnIxeHd5bTJu
 #   rdw_cbs,
 #   profile = "walking",
 #   time = c(5,10,15)
-# )
+# ) %>% mutate(
+# mode = "driving")
 # 
 # isochrone[1:3,] %>% mapview()
 # 
-# saveRDS(isochrone,"isochrone_rwc_walking.RDS")
+#saveRDS(isochrone,"isochrone_rwc_walking.RDS")
 
-isochrone <- readRDS("isochrone_rwc_walking.RDS")
-
-mapview(isochrone)
-```
-
-```{r}
 # isochrone_2 <- mb_isochrone(
 #   rdw_cbs,
 #   profile = "driving",
 #   time = c(5,10,15)
-# )
+# ) %>% mutate(
+# mode = "driving")
 # 
-# isochrone_2[1:3,] %>% mapview
+# isochrone_2[1:3,] %>% mapview()
 # 
-#saveRDS(isochrone_2, "isochrone_rwc_driving.RDS")
+# saveRDS(isochrone_2, "isochrone_rwc_driving.RDS") 
 
-isochrone_2 <- readRDS("isochrone_rwc_driving.RDS")
+# isochrone_3 <- mb_isochrone(
+#   rdw_cbs,
+#   profile = "cycling",
+#   time = c(5,10,15)
+# ) %>% mutate(
+#   mode = "biking")
 
+# isochrone_3[1:3,] %>% mapview()
+# 
+# saveRDS(isochrone_3, "isochrone_rwc_biking.RDS")
 
-# Use driving for hospital analysis. Use walking for other POIs. 
 
 ```
 
+
+Did separately on purpose so that we could share the tokens across multiple users. Otherwise would have used map_dfr function to streamline. 
 
 ```{r}
-access_raw <- isochrone %>% 
-  st_make_valid() %>% 
-  st_join(smc_pois_filter) %>% 
-  st_drop_geometry() %>% 
-  filter(!is.na(osm_id))
+
+isochrone <- readRDS("isochrone_rwc_walking.RDS")
+isochrone_2 <- readRDS("isochrone_rwc_driving.RDS")
+isochrone_3 <- readRDS("isochrone_rwc_biking.RDS")
+
+isochrone_combined <- rbind(isochrone, isochrone_2, isochrone_3)
+
+# Use driving for hospital analysis. Use walking for other POIs. 
+```
+
+```{r}
+access_raw <- isochrone_combined %>% 
+  st_make_valid() %>%
+  st_join(bay_pois_filter) %>% 
+  st_drop_geometry()
 
 ```
 
+```{r}
+amenity_preference <- data.frame(
+  amenity = c(
+    "park",
+    "supermarket",
+    "pharmacy",
+    "bank",
+    "school",
+    "doctors",
+    "restaurant",
+    "bar",
+    "pub",
+    "pitch",
+    "playground",
+    "hospital",
+    "theatre"
+  ),
+  amenity_value = c(
+    0.9,
+    1,
+    0.5,
+    0.5,
+    0.8,
+    0.6,
+    0.7,
+    0.7,
+    0.7,
+    0.8,
+    0.8,
+    0.9,
+    0.3
+  ),
+  amenity_quantity = c(
+   2,
+   2,
+   1,
+   1,
+   1,
+   2,
+   20,
+   5,
+   5,
+   10,
+   5,
+   1,
+   2
+  )
+) %>% 
+  mutate(
+    amenity_decay = -log(0.5)/(amenity_quantity)
+  )
+
+mode_preference <- data.frame(
+  mode = c(
+    "walking",
+    "biking",
+    "driving"
+  ),
+  mode_value = c(
+    1,
+    0.5,
+    0.7
+  ),
+  mode_reasonable = c(
+    15,
+    15,
+    25
+  )
+) %>% 
+  mutate(
+    mode_decay = -log(0.5)/mode_reasonable
+  )
+```
+
+```{r}
+complete_baseline <- data.frame(
+  amenity = amenity_preference$amenity %>% 
+    rep(amenity_preference$amenity_quantity)
+) %>% 
+  left_join(
+    amenity_preference,
+    by = "amenity"
+  ) %>% 
+  group_by(amenity) %>% 
+  mutate(
+    amenity_rank = row_number() - 1
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    score = amenity_value * exp(-amenity_rank * amenity_decay) * 0.5
+  ) # ASSUMES ALL 0.5, or mode_factor for 15 min of any transport means
+
+sum(complete_baseline$score)
+```
+
+```{r}
+complete_temp <- access_raw %>%
+  left_join(
+    amenity_preference,
+    by = "amenity"
+  ) %>%
+  select(-amenity_quantity) %>%
+  left_join(
+    mode_preference,
+    by = "mode"
+  ) %>%
+  select(-mode_reasonable) %>% 
+  group_by(id,mode,amenity) %>%
+  arrange(time) %>%
+  mutate(
+    amenity_rank = row_number() - 1
+  ) %>% 
+  ungroup()
+```
+
+```{r}
+ complete_modes <- complete_temp %>% #for one mode only
+    mutate(
+      score = amenity_value *exp(-amenity_rank * amenity_decay) * exp(-time * mode_decay)
+    ) %>%
+    group_by(id, mode) %>%
+    arrange(desc(score)) %>%
+    filter(!duplicated(osm_id)) %>%
+    summarize(
+      score = sum(score, na.rm=T)/sum(complete_baseline$score)
+    )
+```
+
+```{r}
+complete_total <- complete_temp %>%
+  mutate(
+      score = amenity_value *exp(-amenity_rank * amenity_decay) * mode_value * exp(-time * mode_decay)
+    ) %>%
+  group_by(id) %>%
+  arrange(desc(score)) %>%
+  filter(!duplicated(osm_id)) %>%
+  summarize(
+    score = sum(score, na.rm = T)/sum(complete_baseline$score)
+  ) %>%
+  mutate(mode = "total")
+
+complete <- rbind(
+  complete_modes,
+  complete_total
+)
+
+complete_map <- complete %>%
+  pivot_wider(
+    names_from = "mode",
+    values_from = "score"
+  ) %>%
+  cbind(rdw_cbs %>% select(GEOID10)) %>%
+  st_as_sf()
+
+mapview(complete_map, zcol = "total")
+```
+
+# EQUITY ANALYSIS
+```{r}
+
+Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+
+dec_vars_2020 <-
+  listCensusMetadata(
+    name = "2020/dec/pl",
+    type = "variables"
+  )
+
+rwc_pop_race_2020 <-
+  getCensus(
+    name = "dec/pl",
+    vintage = 2020,
+    region = "block:*", 
+    regionin = "state:06+county:081",
+    vars = "group(P1)"
+  ) %>% 
+  mutate(
+    block =
+      paste0(state,county,tract,block)
+  ) %>% 
+  select(!c(GEO_ID,state,county,tract,NAME) & !ends_with(c("NA"))) %>% 
+  pivot_longer(
+    ends_with("N"),
+    names_to = "name",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    dec_vars_2020 %>% 
+      select(name, label)
+  ) %>% 
+  select(-name) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"category1","category2"),
+    sep = "!!"
+  ) %>%
+  left_join(
+    rdw_cbs %>%
+      select("GEOID10"),
+    by = c("block"="GEOID10") 
+  ) %>%
+  select(-category1)
+
+score_median = median(complete_map$total) 
+  
+rwc_filter <- rwc_pop_race_2020 %>%
+  filter(!is.na(category2)) %>%
+  left_join(
+    complete_map %>%
+      select("total"),
+    by = 'geometry'
+  ) %>%
+  filter(!is.na(total)) %>%
+  mutate(
+    Threshold = ifelse(total>score_median,"Above Median","Below Median")
+  ) %>%
+  mutate(
+    race = case_when(
+      category2 %in% c("White alone")~"White",
+      category2 %in% c("Black or African American alone")~"Black or African American",
+      category2 %in% c("American Indian and Alaska Native alone")~"American Indian and Alaska Native",
+      category2 %in% c("Asian alone")~"Asian",
+      category2 %in% c("Native Hawaiian and Other Pacific Islander alone")~"Native Hawaiian and Other Pacific Islander",
+      category2 %in% c("Some Other Race alone", "Population of two races:", "Population of three races:" , "Population of four races:" , "Population of five races:",  "Population of six races:")~"Other"
+    )
+  ) %>%
+  group_by(
+    Threshold, race
+  ) %>%
+  summarize(
+   estimate=sum(estimate)
+  ) %>%
+  group_by(
+    Threshold
+  ) %>%
+  mutate(
+    perc = estimate/sum(estimate) *100
+  )
+
+df2 <- rwc_filter %>% 
+  mutate(csum = rev(cumsum(rev(perc))), 
+         pos = perc/2 + lead(csum, 1),
+         pos = if_else(is.na(pos), perc/2, pos))
+
+rwc_filter %>% 
+  ggplot(data = rwc_filter,
+         mapping = aes(x = "" , 
+             y = perc, 
+             fill = fct_inorder(race)
+         )) +
+  geom_col(width = 1, color = 1) +
+  coord_polar(theta = "y") +
+  facet_wrap(~Threshold) +
+  scale_fill_brewer(palette = "Pastel1") +
+  geom_label_repel(data = df2,
+                  mapping = aes(y = pos, label = paste0(round(perc), "%")),
+                   size = 3, nudge_x = 1, show.legend = FALSE) +
+  guides(fill = guide_legend(title = "Completeness Score by Race")) +
+  theme_void()
+
+```
+# CRITICAL AMENITY ANALYSIS
+
+```{r}
+access_raw2 <- isochrone_2 %>% 
+  st_make_valid() %>%
+  st_join(bay_pois_filter2) %>% 
+  st_drop_geometry() %>%
+  filter(!is.na(osm_id)) %>%
+  group_by(
+    id
+  ) %>%
+  mutate(
+    mintime = min(time)
+  ) %>%
+  left_join(
+    complete_map%>%
+      select(id,geometry),
+    by="id"
+  ) %>%
+  filter(!duplicated(id)) %>%
+  mutate(
+    Access = ifelse(mintime>10,"No","Yes")
+  ) %>%
+  st_as_sf()
+
+mapview(access_raw2, zcol="Access")
+```
+
+```{r}
+new_hospital <- data.frame(
+  osm_id=00000001, code = 2110, amenity = "hospital", name = "New Hospital")
+
+newhospital_point <- as.data.frame(37.48956) %>%
+  rename(lat = "37.48956") %>%
+  mutate(lon = -122.2239) %>%
+  sf::st_as_sf(., coords = c("lon", "lat"), crs = 4326)
+
+new_hospital <- new_hospital %>%
+  cbind(newhospital_point) %>%
+  st_as_sf(crs=4326)
+  
+mapview(new_hospital)
+
+bay_pois_filternew <- bay_pois_filter2 %>%
+  rbind(new_hospital)
+
+mapview(bay_pois_filternew)
+
+```
+
+```{r}
+
+access_raw3 <- isochrone_2 %>% 
+  st_make_valid() %>%
+  st_join(bay_pois_filternew) %>% 
+  st_drop_geometry() %>%
+  filter(!is.na(osm_id)) %>%
+  group_by(
+    id
+  ) %>%
+  mutate(
+    mintime = min(time)
+  ) %>%
+  left_join(
+    complete_map%>%
+      select(id,geometry),
+    by="id"
+  ) %>%
+  filter(!duplicated(id)) %>%
+  mutate(
+    Access = ifelse(mintime>10,"No","Yes")
+  ) %>%
+  st_as_sf() 
+
+mapview(access_raw3, zcol="Access")
+
+```
+
+# WALK SCORE COMPARISON
+
+```{r}
+library(walkscoreAPI)
+
+
+rwc_centroid <- rdw_cbs %>%
+  st_centroid() %>%
+  extract(geometry, c('lat', 'lon'), '\\((.*), (.*)\\)', convert = TRUE)
+
+
+getWS("longitude", "latitude", key)
+
+```
+
+NEXT STEPS:
+- fill in code above to match our data. --> need to expand POIs and get biking isochronesx
+- equity analysis (using DECENNIAL DATA)
+- hospital analysis -- redo but only for hospitals and driving 
+  - then add in one extra hospital and see what effect it has on communities
+  
+  changes:
+  (1) using blocks instead of block groups (and consequently decennial data)
+  (2) pick larger amount of POIs
+  (3) Hospital "critical amenities" analysis - either has minimum access or not (binary)
+  (4) Equity analysis
+  (5) By manually adding development - see how affects completeness for small area
+      - isolate area of of blocks and view before/after change. 
+  (6) Compare our isochrone_1 to walkscore.api
+  
+  
+  * Make sure to incorporate saveRDS for marks
+  
