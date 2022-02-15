@@ -785,7 +785,7 @@ ggplot()+
        linetype = "Gas")
 ```
 
-From the above plot, while total CO2 emissions attributed to gas usage has a similar trend to actual usage, there is a significant decline in total CO2 emissions attributed to electricity and even achieved zero CO2 emissions in 2019. This trend suggests increasing adoption of renewable energy sources used for electricity production and is reflective of active carbon control policy instruments in play such as California's mandate to achieve 100% zero carbon electricity by 2045. 
+From the above plot, while total CO2 emissions attributed to gas usage has a similar trend to actual usage, there is a significant decline in total CO2 emissions attributed to electricity. This trend suggests increasing adoption of renewable energy sources used for electricity production and is reflective of active carbon control policy instruments in play such as California's mandate to achieve 100% zero carbon electricity by 2045. It should be noted that the reason for PG&E reporting zero emissions in 2019 is primarily due to a change in the CEC's Power Source Disclosure Program which results in significantly lower emissions levels. Nevertheless, the years of steady decline in CO2 emissions are encouraging for Atherton's energy future.
 
 Apart from state-mandated energy policies, the decreasing trend in residential electricity carbon emissions may also be a result of increasing awareness among Atherton residents for deriving greater energy efficiencies in their homes, such as the installation of solar photovoltaic panels or fitting out homes with smart-climate control sensors.
 
