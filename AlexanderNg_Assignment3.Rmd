@@ -1,0 +1,1001 @@
+---
+title: "AlexanderNg_Assignment3"
+author: "Alexander Ng"
+date: " February 15, 2022"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(tigris)
+library(censusapi)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(tidycensus)
+library(mapview)
+library(dplyr)
+library(ggrepel)
+library(ggplot2)
+library(mapboxapi)
+library(jsonlite)
+
+knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(warning = F, message = F)
+
+mb_access_token("sk.eyJ1IjoiYWxleG5nbGQiLCJhIjoiY2t5dnY3OGliMDJlaTMwcnIxeHd5bTJucyJ9.mZzy6K59_f5dGUlEQ8oL7Q", install = T, overwrite = T)
+
+```
+
+## Introduction
+
+This report analyzes Greenhouse Gas (GHG) emission levels in the town of Atherton from 2013 to 2019 and focuses on two primary GHG emission sources: (i) Vehicle emissions and (ii) Building emissions. Atherton was selected due to its national prominence as America's most expensive ZIP code with a median home value of approximately $7.5 million and has among the highest per capita income rates in the country. This report will discuss the GHG emission trends in Atherton and identify areas where Atherton is doing well or could do better to address overall city emission levels.
+
+```{r}
+
+# zctas <- zctas()
+# 
+# zip <- zctas %>% 
+#   filter(GEOID10 == "94027")
+# 
+# saveRDS(zip, "zip.rds")
+```
+
+```{r}
+# blocks <- blocks("CA")
+# 
+# zip_blocks <- blocks %>%
+#   st_centroid() %>%
+#   .[zip,] %>%
+#   st_drop_geometry() %>%
+#   left_join(blocks %>% select(GEOID10)) %>%
+#   st_as_sf() # blocks within zip code
+# 
+# saveRDS(zip_blocks, "zip_blocks.rds")
+# saveRDS(blocks, "blocks.rds")
+```
+
+```{r}
+# full_zip_od <- 2013:2019 %>% 
+#   map_dfr(function(year){
+#     
+#     print(year)
+#     
+#     temp <- read_csv(paste0("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/LODES/ca_od_main_JT01_", year, ".csv.gz")) %>% 
+#       filter(
+#         h_geocode %in% zip_blocks$GEOID10 |
+#           w_geocode %in% zip_blocks$GEOID10
+#       ) %>% 
+#       mutate(year = year)
+#     
+#     saveRDS(temp, paste0("temp_od_", year, ".rds"))
+#     
+#     return(temp)
+#     
+#   })
+# 
+# saveRDS(full_zip_od, "full_zip_od.rds")
+
+```
+
+## Part 1 - Vehicle Emissions
+```{r}
+full_zip_od <- readRDS("full_zip_od.rds")
+zip <- readRDS("zip.rds")
+zip_blocks <- readRDS("zip_blocks.rds")
+blocks <- readRDS("blocks.rds")
+```
+
+### Atherton ZIP Boundary & Work Trips
+
+The following map demarcates the Atherton zip boundaries used in this analysis:
+```{r}
+leaflet() %>% 
+  addMapboxTiles(
+    style_id = "streets-v11",
+    username = "mapbox"
+  ) %>% 
+  addPolygons(
+    data = zip_blocks,
+    fill = F, 
+    weight = 0.9
+  )
+```
+
+LODES 2013 to 2019 datasets were used to determine the commute emissions for both origin and destination locations in Atherton. A map dfr function was used to collate the workplace and residence census block codes for Atherton (ZIP 94027). Note: An assumption was made that all internal trips within Atherton are neglible (as these account for less than 2% of all work trips).
+
+```{r}
+full_zip_od_clean <- full_zip_od %>% 
+  select(-createdate) %>% 
+  filter(!(
+    h_geocode %in% zip_blocks$GEOID10 &
+      w_geocode %in% zip_blocks$GEOID10
+  )) %>% 
+  mutate(
+    direction = ifelse(
+      h_geocode %in% zip_blocks$GEOID10,
+      "outbound",
+      "inbound"
+    )
+  ) %>%
+  select(h_geocode, w_geocode, S000, direction, year) 
+```
+
+The map below illustrates the origin and destination locations for all Bay Area inbound/outbound work trips for Atherton: 
+
+```{r}
+visits_pal <- colorNumeric(
+  palette = "Reds",
+  domain = full_zip_od_clean$S000
+)
+
+leaflet() %>% 
+  addMapboxTiles(
+    style_id = "light-v9",
+    username = "mapbox"
+  ) %>% 
+  addPolygons(
+    data = zip_blocks,
+    fill = F,
+    weight = 0.5
+  ) %>% 
+  addPolygons(
+    data = full_zip_od_clean %>% filter(direction == "outbound") %>% filter(S000 != 1) %>%
+    left_join(blocks %>% select(w_geocode = GEOID10)) %>% st_as_sf() ,
+    fillColor = ~visits_pal(S000),
+    color = "red",
+    weight = 1,
+    fillOpacity = 0.75,
+    label = ~S000,
+    group = "Outbound"
+  ) %>% 
+  addPolygons(
+    data = full_zip_od_clean %>% filter(direction == "inbound") %>% filter(S000 != 1) %>%
+    left_join(blocks %>% select(h_geocode = GEOID10)) %>% st_as_sf(),
+    fillColor = ~visits_pal(S000),
+    color = "red",
+    weight = 1,
+    fillOpacity = 0.75,
+    label = ~S000,
+    group = "Inbound"
+  ) %>%
+  addLegend(
+    data = full_zip_od_clean,
+    pal = visits_pal,
+    values = full_zip_od_clean$S000,
+    title = "Visits to<br>Atherton from<br> 2013 to 2019"
+  ) %>%
+  addLayersControl(
+    overlayGroups = c("Inbound","Outbound"),
+    options = layersControlOptions(collapsed = FALSE))
+```
+From the above map, the distribution trend of outbound work trips from Atherton is generally expected and concentrated largely within the Peninsular tech hub districts and downtown cores of San Francisco and San Jose cities. Inbound work trips on the other hand are more sparsely distributed throughout the Bay Area, which is also expected as Atherton is primarily a residential neighborhood. 
+ 
+```{r}
+# atherton_boundary <- places("CA", cb = T, progress_bar = F) %>% 
+#   filter(NAME == "Atherton")
+# 
+# atherton_centroid <- atherton_boundary %>% 
+#   st_centroid() %>% 
+#   st_coordinates()
+#   
+# 
+# full_zip_inbound <- full_zip_od_clean %>%
+#   filter(direction == "inbound") %>%
+#   left_join(blocks %>% select(h_geocode = GEOID10)) %>% 
+#   st_as_sf() %>%
+#   st_centroid() %>% 
+#   st_coordinates()
+# 
+# full_zip_outbound <- full_zip_od_clean %>%
+#   filter(direction == "outbound") %>%
+#   left_join(blocks %>% select(w_geocode = GEOID10)) %>% 
+#   st_as_sf() %>%
+#   st_centroid() %>% 
+#   st_coordinates()
+# 
+# atherton_inbound <-
+#   1:nrow(full_zip_inbound) %>%
+#   map_dfr(function(x){
+#     if(x%%300==0){
+#       print(x)
+#       Sys.sleep(10)
+#     }
+#     mb_directions(
+#       origin = full_zip_inbound[x, ],
+#       destination = atherton_centroid,
+#       profile = "driving-traffic"
+#     )
+#   }) %>% 
+#   st_as_sf()
+
+# saveRDS(atherton_inbound, "atherton_inbound.rds")
+
+
+# atherton_outbound <-
+#   1:nrow(full_zip_outbound) %>%
+#   map_dfr(function(x){
+#     if(x%%300==0){
+#       print(x)
+#       Sys.sleep(10)
+#     }
+#     mb_directions(
+#       origin = atherton_centroid,
+#       destination = full_zip_outbound[x, ],
+#       profile = "driving-traffic"
+#     )
+#   }) %>% 
+#   st_as_sf()
+# 
+#  saveRDS(atherton_outbound, "atherton_outbound.rds")
+
+
+```
+
+```{r}
+atherton_inbound <- readRDS("atherton_inbound.rds")
+atherton_outbound <- readRDS("atherton_outbound.rds")
+```
+
+### Isochrone Mapping
+
+In order to determine the associated vehicle GHG emissions, isochrones were established using the map dfr function to determine the distance and duration made for the respective inbound/outbound work trips. A leftjoin function was used to combine the duration/distance data with the respective workplace or residence census block codes in Atherton for further processing.
+
+Isochrones for outbound work trips are mapped in the following:
+```{r}
+leaflet() %>%
+  addMapboxTiles(
+    style_id = "light-v9",
+    username = "mapbox"
+  ) %>%
+  addPolylines(
+    data = atherton_outbound
+  )
+
+```
+
+Isochrones for inbound work trips are mapped in the following:
+```{r}
+leaflet() %>%
+  addMapboxTiles(
+    style_id = "light-v9",
+    username = "mapbox"
+  ) %>%
+  addPolylines(
+    data = atherton_inbound
+  )
+```
+
+
+```{r}
+
+all_zip_outbound <- full_zip_od_clean %>%
+  filter(direction == "outbound") %>%
+  left_join(blocks %>% select(w_geocode = GEOID10)) %>%
+  st_as_sf() %>%
+  mutate(cbg = as.character(substr(h_geocode, 1, 12)))
+
+all_zip_inbound <- full_zip_od_clean %>%
+  filter(direction == "inbound") %>%
+  left_join(blocks %>% select(h_geocode = GEOID10)) %>%
+  st_as_sf() %>%
+  mutate(cbg = as.character(substr(h_geocode, 1, 12)))
+```
+
+### Trip Mode Tabulation
+
+Next, ACS data was used to consider trip mode by determining an approximate percentage of trips made on each of these routes either by single occupancy vehicle or carpool and also used to determine the vehicle miles travelled for each work trip.
+
+```{r}
+# Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+# 
+# acs_vars_2019_5yr <-
+#   listCensusMetadata(
+#     name = "2019/acs/acs5",
+#     type = "variables"
+#   )
+
+# travel_time_mode_outbound <-
+#   counties("CA", cb = T, progress_bar = F) %>%
+#   pull(COUNTYFP) %>% 
+#   map_dfr(function(x){
+#     getCensus(
+#       name = "acs/acs5",
+#       vintage = 2019,
+#       region = "block group:*",
+#       regionin = paste0("state:06+county:", x),
+#       vars = "group(B08134)"
+#     )
+#   }) %>% 
+#   mutate(
+#     cbg =
+#       paste0(state,county,tract,block_group)
+#   ) %>%
+#   filter(cbg %in% all_zip_outbound$cbg) %>% 
+#   select(!c(GEO_ID,state,county,tract,block_group,NAME) & !ends_with(c("EA","MA","M"))) %>%
+#   pivot_longer(
+#     ends_with("E"),
+#     names_to = "variable",
+#     values_to = "estimate"
+#   ) %>%
+#   left_join(
+#     acs_vars_2019_5yr %>% 
+#       select(name, label), 
+#     by = c("variable" = "name")
+#   ) %>% 
+#   select(-variable) %>% 
+#   separate(
+#     label,
+#     into = c(NA, NA, "total", "mode", "carpool", "time"),
+#     sep = "!!"
+#   ) %>% 
+#   mutate(
+#     mode = case_when(
+#       total %in% c(
+#         "Less than 10 minutes",
+#         "10 to 14 minutes",
+#         "15 to 19 minutes",
+#         "20 to 24 minutes",
+#         "25 to 29 minutes",
+#         "30 to 34 minutes",
+#         "35 to 44 minutes",
+#         "45 to 59 minutes",
+#         "60 or more minutes"
+#       ) ~ "Total",
+#       mode == "Drove alone:" ~ mode,
+#       carpool %in% c(
+#         "In 2-person carpool:",
+#         "In 3-or-more-person carpool:"
+#       ) ~ carpool
+#     ),
+#     time = case_when(
+#       mode == "Total" ~ total,
+#       mode == "Drove alone:" ~ carpool,
+#       mode == carpool ~ time
+#     )
+#   ) %>% 
+#   filter(!is.na(time)) %>% 
+#   select(-total, -carpool) %>% 
+#   pivot_wider(
+#     names_from = mode,
+#     values_from = estimate
+#   ) %>% 
+#   mutate(
+#     perc_veh1 = `Drove alone:`/Total,
+#     perc_veh2 = `In 2-person carpool:`/Total,
+#     perc_veh3 = `In 3-or-more-person carpool:`/Total
+#   )
+# 
+# saveRDS(travel_time_mode_outbound, "travel_time_mode_outbound.rds")
+
+```
+
+```{r}
+travel_time_mode_outbound <- readRDS("travel_time_mode_outbound.rds")
+```
+
+
+```{r}
+atherton_trips_outbound <-
+  all_zip_outbound %>% 
+  cbind(
+    atherton_outbound %>% 
+      st_drop_geometry()
+  ) %>% 
+  mutate(
+    time = case_when(
+      duration < 10 ~ "Less than 10 minutes",
+      duration < 15 ~ "10 to 14 minutes",
+      duration < 20 ~ "15 to 19 minutes",
+      duration < 25 ~ "20 to 24 minutes",
+      duration < 30 ~ "25 to 29 minutes",
+      duration < 35 ~ "30 to 34 minutes",
+      duration < 45 ~ "35 to 44 minutes",
+      duration < 60 ~ "45 to 59 minutes",
+      TRUE ~ "60 or more minutes"
+    )
+  ) %>% 
+  left_join(
+    travel_time_mode_outbound %>% 
+      select(
+        cbg = cbg,
+        time,
+        perc_veh1,
+        perc_veh2,
+        perc_veh3
+      ),
+    by = c("cbg", "time")
+  ) %>% 
+  mutate(
+    vehicles = 
+      S000 * perc_veh1 + 
+      S000 * perc_veh2 / 2 +
+      S000 * perc_veh3 / 3,
+    vmt = vehicles * distance * 2
+  )
+```
+
+### GHG Emission Calculations
+
+To determine the total vehicle GHG emissions, data from the California Air Resources Board (CARB) Emission Factors (EMFAC) model providing emissions rates data on a year by year basis was used as reference and applied to the outbound/inbound vehicular trip data to calculate the total GHG emissions associated with each trip, total vehicle miles travelled between 2013 to 2019 and assumes 250 workdays for each year. The total vehicle GHG emission trends incorporating both inbound and outbound worktrips is plotted in the conclusion of this report.
+
+```{r}
+emfac <- 
+  read_csv("EMFAC2021-EI-202xClass-BayAreaAQMD-2022-Summer-20220203075721.csv", skip = 8) %>% 
+  transmute(
+    Category = `Vehicle Category`,
+    Fuel_Type = Fuel,
+    Percent_Trips = Trips/sum(Trips),
+    Percent_Miles = `Total VMT`/sum(`Total VMT`),
+    `MTCO2_Running_Exhaust` = CO2_RUNEX/`Total VMT`,
+    `MTCO2_Start_Exhaust` = CO2_STREX/Trips
+  )
+
+emfac
+```
+
+EMFAC Chart by Fuel Type
+
+```{r}
+atherton_outbound_trips_ghg <- atherton_trips_outbound %>%
+  select(year, S000,vmt) %>%
+  st_drop_geometry() %>%
+  filter(vmt!="NaN") %>%
+  group_by(year) %>%
+  summarize(S000 = sum(S000), vmt = sum(vmt)) %>%
+  mutate(totalvmt = 250*vmt, trips = S000*250) %>% #assumes 250 work days per year (5 per week for 50 weeks)
+  select(-vmt, -S000) 
+
+
+ghg_calc_outbound <- 1:7 %>%
+  map_dfr(function(x){
+    emfac %>%
+      mutate(
+    trips = Percent_Trips * atherton_outbound_trips_ghg$trips[x],
+    vmt = Percent_Miles * atherton_outbound_trips_ghg$totalvmt[x],
+    ghg = vmt*MTCO2_Running_Exhaust + trips*MTCO2_Start_Exhaust*2,
+    year = x
+  )}) %>%
+  group_by(year) %>%
+  summarize(outbound_ghg = sum(ghg)) %>%
+  select(-year) %>%
+  mutate(year = 2013:2019)
+
+```
+
+```{r}
+# Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+# 
+# acs_vars_2019_5yr <-
+#   listCensusMetadata(
+#     name = "2019/acs/acs5",
+#     type = "variables"
+#   )
+# 
+# travel_time_mode_inbound <-
+#   counties("CA", cb = T, progress_bar = F) %>%
+#   pull(COUNTYFP) %>%
+#   map_dfr(function(x){
+#     getCensus(
+#       name = "acs/acs5",
+#       vintage = 2019,
+#       region = "block group:*",
+#       regionin = paste0("state:06+county:", x),
+#       vars = "group(B08134)"
+#     )
+#   }) %>%
+#   mutate(
+#     cbg =
+#       paste0(state,county,tract,block_group)
+#   ) %>%
+#   filter(cbg %in% all_zip_inbound$cbg) %>%
+#   select(!c(GEO_ID,state,county,tract,block_group,NAME) & !ends_with(c("EA","MA","M"))) %>%
+#   pivot_longer(
+#     ends_with("E"),
+#     names_to = "variable",
+#     values_to = "estimate"
+#   ) %>%
+#   left_join(
+#     acs_vars_2019_5yr %>%
+#       select(name, label),
+#     by = c("variable" = "name")
+#   ) %>%
+#   select(-variable) %>%
+#   separate(
+#     label,
+#     into = c(NA, NA, "total", "mode", "carpool", "time"),
+#     sep = "!!"
+#   ) %>%
+#   mutate(
+#     mode = case_when(
+#       total %in% c(
+#         "Less than 10 minutes",
+#         "10 to 14 minutes",
+#         "15 to 19 minutes",
+#         "20 to 24 minutes",
+#         "25 to 29 minutes",
+#         "30 to 34 minutes",
+#         "35 to 44 minutes",
+#         "45 to 59 minutes",
+#         "60 or more minutes"
+#       ) ~ "Total",
+#       mode == "Drove alone:" ~ mode,
+#       carpool %in% c(
+#         "In 2-person carpool:",
+#         "In 3-or-more-person carpool:"
+#       ) ~ carpool
+#     ),
+#     time = case_when(
+#       mode == "Total" ~ total,
+#       mode == "Drove alone:" ~ carpool,
+#       mode == carpool ~ time
+#     )
+#   ) %>%
+#   filter(!is.na(time)) %>%
+#   select(-total, -carpool) %>%
+#   pivot_wider(
+#     names_from = mode,
+#     values_from = estimate
+#   ) %>%
+#   mutate(
+#     perc_veh1 = `Drove alone:`/Total,
+#     perc_veh2 = `In 2-person carpool:`/Total,
+#     perc_veh3 = `In 3-or-more-person carpool:`/Total
+#   )
+# 
+# saveRDS(travel_time_mode_inbound, "travel_time_mode_inbound.rds")
+```
+
+```{r}
+travel_time_mode_inbound <- readRDS("travel_time_mode_inbound.rds")
+```
+
+```{r}
+atherton_trips_inbound <-
+  all_zip_inbound %>% 
+  cbind(
+    atherton_inbound %>% 
+      st_drop_geometry()
+  ) %>% 
+  mutate(
+    time = case_when(
+      duration < 10 ~ "Less than 10 minutes",
+      duration < 15 ~ "10 to 14 minutes",
+      duration < 20 ~ "15 to 19 minutes",
+      duration < 25 ~ "20 to 24 minutes",
+      duration < 30 ~ "25 to 29 minutes",
+      duration < 35 ~ "30 to 34 minutes",
+      duration < 45 ~ "35 to 44 minutes",
+      duration < 60 ~ "45 to 59 minutes",
+      TRUE ~ "60 or more minutes"
+    )
+  ) %>% 
+  left_join(
+    travel_time_mode_inbound %>% 
+      select(
+        cbg = cbg,
+        time,
+        perc_veh1,
+        perc_veh2,
+        perc_veh3
+      ),
+    by = c("cbg", "time")
+  ) %>% 
+  mutate(
+    vehicles = 
+      S000 * perc_veh1 + 
+      S000 * perc_veh2 / 2 +
+      S000 * perc_veh3 / 3,
+    vmt = vehicles * distance * 2
+  )
+```
+
+```{r}
+atherton_inbound_trips_ghg <- atherton_trips_inbound %>%
+  select(year, S000,vmt) %>%
+  st_drop_geometry() %>%
+  filter(vmt!="NaN") %>%
+  group_by(year) %>%
+  summarize(S000 = sum(S000), vmt = sum(vmt)) %>%
+  mutate(totalvmt = 250*vmt, trips = S000*250) %>% #assumes 250 work days per year (5 per week for 50 weeks)
+  select(-vmt, -S000) 
+
+
+ghg_calc_inbound <- 1:7 %>%
+  map_dfr(function(x){
+    emfac %>%
+      mutate(
+    trips = Percent_Trips * atherton_inbound_trips_ghg$trips[x],
+    vmt = Percent_Miles * atherton_inbound_trips_ghg$totalvmt[x],
+    ghg = vmt*MTCO2_Running_Exhaust + trips*MTCO2_Start_Exhaust*2,
+    year = x
+  )}) %>%
+  group_by(year) %>%
+  summarize(inbound_ghg = sum(ghg)) %>%
+  select(-year) %>%
+  mutate(year = 2013:2019)
+```
+
+```{r}
+total_ghg_atherton <- ghg_calc_inbound %>%
+  left_join(ghg_calc_outbound) %>%
+  .[, c(2,1,3)] %>%
+  mutate(total_ghg = inbound_ghg + outbound_ghg)
+
+total_ghg_atherton
+```
+Vehicle GHG Emissions in Atherton
+
+From the table above, the total annual vehicle GHG emissions observed in Atherton is generally stable at approximately 35000 metric tonnes of GHG emissions annually. This suggests that there are no discernible changes in commuting patterns in Atherton and the commute mode choice remained relatively constant over the years. Further comparisons can be made with ACS demographic data to determine if there are any noticeable trends in inbound/outbound work trips based on the relative population changes in Atherthon. There may also be anomalies witn the data collected from 2013 as the total number of outbound GHG emitted is almost 75% lower than the following years, warranting further investigation.
+
+## Part 2 - Building Emissions
+
+### PG&E Energy and CO2 Emission Data
+To determine building emissions, a map dfr function was used to tabulate PG&E data from 2013 to 2019 for the relevant Atherton ZIP code 94207 and further categorised into the respective energy groups(i) Commercial - Elec (ii) Commercial - Gas (iii) Residential - Elec (iv) Residential Gas. Duplicated data from Sep 2017 was also removed in this process. 
+
+```{r}
+#  pge_elec_emissions_factor <-
+#   data.frame(
+#     year = c(2013:2019),
+#     factor = c(427,435,405,294,210,206,2.68)
+#   )
+# 
+# pge_data <- 
+#   2013:2019 %>% 
+#   map_dfr(function(yr){
+#     
+#     factor <- 
+#       pge_elec_emissions_factor %>% 
+#       filter(year == yr) %>% 
+#       pull(factor)
+#     
+#     1:4 %>% 
+#       map_dfr(function(quarter){
+#         
+#         c("Electric","Gas") %>% 
+#           map_dfr(function(type){
+#             
+#             filename <- 
+#               paste0(
+#                 "/Volumes/GoogleDrive-112836525701087151759/Shared drives/SFBI/Data Library/PG&E/PGE_",
+#                 yr,
+#                 "_Q",
+#                 quarter,
+#                 "_",
+#                 type,
+#                 "UsageByZip.csv"
+#               )
+#             
+#             temp <- read_csv(filename)
+#             
+#             if(yr == 2017 & quarter == 4) {
+#               temp <- 
+#                 temp %>% 
+#                 filter(MONTH != 9)
+#             }
+#                         
+#             temp <-
+#               temp %>% 
+#               rename_all(toupper) %>% 
+#               mutate(
+#                 TOTALKBTU = ifelse(
+#                   substr(CUSTOMERCLASS,1,1) == "E",
+#                   TOTALKWH * 3.412,
+#                   TOTALTHM * 99.976
+#                 ),
+#                 TOTALTCO2E = ifelse(
+#                   substr(CUSTOMERCLASS,1,1) == "E",
+#                   TOTALKWH/1000 * factor * 0.000453592,
+#                   TOTALTHM * 0.00531
+#                 )
+#               ) %>% 
+#               select(
+#                 ZIPCODE,
+#                 YEAR,
+#                 MONTH,
+#                 CUSTOMERCLASS,
+#                 TOTALKBTU,
+#                 TOTALTCO2E,
+#                 TOTALCUSTOMERS
+#               )
+#             
+#           })
+#         
+#       })
+#     
+#   })
+# 
+# saveRDS(pge_data, "pge_data.rds")
+
+pge_data <- readRDS("pge_data.rds")
+
+```
+
+```{r}
+atherton_pge_data <-
+  pge_data %>% 
+  filter(ZIPCODE %in% zip) %>% 
+  filter(CUSTOMERCLASS %in% c(
+    "Elec- Commercial",
+    "Elec- Residential",
+    "Gas- Commercial",
+    "Gas- Residential"
+  )) %>% 
+  mutate(
+    ENERGYTYPE = substr(CUSTOMERCLASS,1,1)
+  ) %>% 
+  group_by(ZIPCODE, ENERGYTYPE, YEAR, CUSTOMERCLASS) %>% 
+  summarize(
+    TOTALKBTU = sum(TOTALKBTU, na.rm=T),
+    TOTALTCO2E = sum(TOTALTCO2E, na.rm=T), 
+    TOTALCUSTOMERS = mean(TOTALCUSTOMERS, na.rm=T)
+  ) %>% 
+  group_by(ENERGYTYPE, YEAR, CUSTOMERCLASS) %>%
+  summarize(across(
+    c(TOTALKBTU,TOTALTCO2E,TOTALCUSTOMERS),
+    ~sum(.,na.rm=T)
+  )) %>%
+  mutate(TYPE = CUSTOMERCLASS) %>%
+    separate(
+    TYPE,
+    into = c("UTILITY", "TYPE"),
+    sep = "-"
+  )
+
+atherton_pge_gas <- atherton_pge_data %>%
+  filter(UTILITY == "Gas")
+
+atherton_pge_elec <- atherton_pge_data %>%
+  filter(UTILITY == "Elec")
+
+```
+
+A line graph depicting the annual electricity and natural gas usage for commercial and residential properties between 2013 to 2019 is plotted in the following chart:
+
+```{r}
+ggplot()+   
+  geom_line(data = atherton_pge_elec, aes(x = YEAR, y = TOTALKBTU, color = CUSTOMERCLASS)) +
+  geom_line(data = atherton_pge_gas, aes(x = YEAR, y = TOTALKBTU, linetype = CUSTOMERCLASS)) +
+  geom_point() + 
+    labs(x = "Year",
+       y = "kBTU's",
+       title = "Atherton PG&E Territory Yearly Residential Electricity and Gas Usage,
+                                2013 to 2019",
+       color = "Electricity",
+       linetype = "Gas")
+```
+
+From the chart above, it appears that there are hardly any commercial properties in Atherton and this is reflected in the null data collated for commercial properties. This is generally expected for Atherton given that it is primarily a residential neighborhood although a minimal level of commercial electricity use was observed in 2016, which could be attributed to a temporary change in business/commercial address for a particular home that year. Otherwise, the trends in electricity and gas usage in Atherton for residential purposes are relatively stable from 2013 through 2019.
+
+A line graph depicting the annual CO2 emissions for commercial and residential properties between 2013 to 2019 is plotted in the following chart:
+
+
+```{r}
+ggplot()+   
+  geom_line(data = atherton_pge_elec, aes(x = YEAR, y = TOTALTCO2E, color = CUSTOMERCLASS)) +
+  geom_line(data = atherton_pge_gas, aes(x = YEAR, y = TOTALTCO2E, linetype = CUSTOMERCLASS)) +
+  geom_point() + 
+    labs(x = "Year",
+       y = "CO2e",
+       title = "Atherton PG&E Territory Yearly CO2 Emissions,
+                                2013 to 2019",
+       color = "Electricity",
+       linetype = "Gas")
+```
+
+From the above plot, while total CO2 emissions attributed to gas usage has a similar trend to actual usage, there is a significant decline in total CO2 emissions attributed to electricity and even achieved zero CO2 emissions in 2019. This trend suggests increasing adoption of renewable energy sources used for electricity production and is reflective of active carbon control policy instruments in play such as California's mandate to achieve 100% zero carbon electricity by 2045. 
+
+Apart from state-mandated energy policies, the decreasing trend in residential electricity carbon emissions may also be a result of increasing awareness among Atherton residents for deriving greater energy efficiencies in their homes, such as the installation of solar photovoltaic panels or fitting out homes with smart-climate control sensors.
+
+### Energy Use Per Resident
+```{r}
+# Sys.setenv(CENSUS_KEY="0f0e2bffc9d96d5405bcb932e25318a4edb32602")
+# atherton_pop <-
+#   2013:2019 %>% 
+#   map_dfr(function(x){
+#     getCensus(
+#       name = "acs/acs5",
+#       vintage = x,
+#       region = "block group:*",
+#       regionin = paste0("state:06+county:081"),
+#       vars = "B01001_001E"
+#     ) %>%
+#     mutate(year = x)
+#   }) %>%
+#   transmute(
+#     tract =
+#       paste0(state,county,tract),
+#     pop = B01001_001E,
+#     year = year
+#   ) 
+# 
+# saveRDS(atherton_pop, "atherton_pop.rds")
+
+atherton_pop <- readRDS("atherton_pop.rds")
+```
+
+Next, ACS population data was used to determine the residential energy use per resident in Atherton. This was carried out using a map-dfr function to obtain the relevant census data from 2013-2019, filtering for Atherton ZIP codes and dividing the total residential energy usage by the total population in Atherton for each year accordingly.
+
+```{r}
+zip_blocks_tracts <- zip_blocks %>%
+  mutate(
+    tract = substr(GEOID10, 1,11)
+  ) 
+
+
+atherton_pop_filtered <- atherton_pop %>%
+  filter(tract %in% zip_blocks_tracts$tract) %>%
+  group_by(year) %>%
+  summarize(pop = sum(pop))
+
+atherton_residential_elec <- atherton_pge_data %>%
+  filter(TYPE == " Residential") %>%
+  filter(UTILITY == "Elec") %>%
+  group_by(YEAR) %>% 
+  summarize(TOTALKBTU = sum(TOTALKBTU)) %>%
+  cbind(atherton_pop_filtered$pop) %>%
+  transmute(YEAR, EnergyUsePerResident = TOTALKBTU/atherton_pop_filtered$pop)
+
+atherton_residential_gas <- atherton_pge_data %>%
+  filter(TYPE == " Residential") %>%
+  filter(UTILITY == "Gas") %>%
+  group_by(YEAR) %>% 
+  summarize(TOTALKBTU = sum(TOTALKBTU)) %>%
+  cbind(atherton_pop_filtered$pop) %>%
+  transmute(YEAR, EnergyUsePerResident = TOTALKBTU/atherton_pop_filtered$pop)
+```
+
+### Energy Use Per Job
+
+To determine the commercial energy use per job, data from LODES Workplace Area Characteristics (WAC) was used. This was similarly carried out using a map-dfr function to obtain the relevant WAC data, filtering for Atherton ZIP codes and dividing the total energy use for commercial purposes by the total number of jobs in Atherton for each year.
+
+```{r}
+devtools::install_github("jamgreen/lehdr")
+library(lehdr)
+
+# ca_od <-
+# 2013:2019 %>% 
+#  map_dfr(function(yr){
+#  grab_lodes(
+#   state = "ca", 
+#   year = yr, 
+#   lodes_type = "wac", 
+#   job_type = "JT01",
+#   state_part = "main", 
+#   agg_geo = "tract"
+# )})
+# 
+# saveRDS(ca_od, "ca_od.rds")
+
+ca_od <- readRDS("ca_od.rds")
+```
+
+```{r}
+atherton_commercial_energy <- ca_od %>%
+  filter(w_tract %in% zip_blocks_tracts$tract) %>%
+  select(year, C000) %>%
+  group_by(year) %>%
+  summarize(jobs = sum(C000))
+
+atherton_commercial_elec <- atherton_pge_data %>%
+  filter(TYPE == " Commercial") %>%
+  filter(UTILITY == "Elec") %>%
+  group_by(YEAR) %>% 
+  summarize(TOTALKBTU = sum(TOTALKBTU)) %>%
+  cbind(atherton_commercial_energy$jobs) %>%
+  transmute(YEAR, EnergyUsePerJob = TOTALKBTU/atherton_commercial_energy$jobs)
+
+atherton_commercial_gas <- atherton_pge_data %>%
+  filter(TYPE == " Commercial") %>%
+  filter(UTILITY == "Gas") %>%
+  group_by(YEAR) %>% 
+  summarize(TOTALKBTU = sum(TOTALKBTU)) %>%
+  cbind(atherton_commercial_energy$jobs) %>%
+  transmute(YEAR, EnergyUsePerJob = TOTALKBTU/atherton_commercial_energy$jobs)
+  
+```
+
+### Normalizing for Heating Degree Days (HDD) & Cooling Degree Days (CDD)
+
+Finally, CanESM2 (Average) data from the Cal-Adapt Degree Day tool were used to determine the total number of heating-degree days (HDD) and cooling-degree days (CDD) in Atherton from 2013 to 2019. The resulting energy usage across the 4 distinct energy categories were then normalized on either a per KBTU per resident per CDD/HDD basis or a per KBTU per job per CDD/HDD basis.
+
+```{r}
+heating_degree_days <- read_csv("chart (1).csv", skip = 11) %>%
+  filter(year %in% 2013:2019) %>%
+  select(-Observed)
+
+cooling_degree_days <- read_csv("chart.csv", skip = 11) %>%
+  filter(year %in% 2013:2019) %>%
+  select(-Observed)
+```
+
+```{r}
+atherton_residential_elec_plot <- atherton_residential_elec %>%
+  cbind(cooling = cooling_degree_days$`CanESM2 (Average)`) %>%
+  mutate(KBTUPerUnit = EnergyUsePerResident/cooling) %>%
+  select(YEAR, KBTUPerUnit) %>%
+  mutate(group = "Residential Electric")
+
+atherton_residential_gas_plot <- atherton_residential_gas %>%
+  cbind(heating = heating_degree_days$`CanESM2 (Average)`) %>%
+  mutate(KBTUPerUnit = EnergyUsePerResident/heating) %>%
+  select(YEAR, KBTUPerUnit) %>%
+  mutate(group = "Residential Gas")
+
+atherton_commercial_elec_plot <- atherton_commercial_elec %>%
+  cbind(cooling = cooling_degree_days$`CanESM2 (Average)`) %>%
+  mutate(KBTUPerUnit = EnergyUsePerJob/cooling) %>%
+  select(YEAR, KBTUPerUnit) %>%
+  mutate(group = "Commercial Electric")
+
+atherton_commercial_gas_plot <- atherton_commercial_gas %>%
+  cbind(heating = heating_degree_days$`CanESM2 (Average)`) %>%
+  mutate(KBTUPerUnit = EnergyUsePerJob/heating) %>%
+  select(YEAR, KBTUPerUnit) %>%
+  mutate(group = "Commercial Gas")
+
+atherton_final_plot <- atherton_residential_elec_plot %>%
+  rbind(atherton_residential_gas_plot) %>%
+  rbind(atherton_commercial_elec_plot) %>%
+  rbind(atherton_commercial_gas_plot)
+```
+
+The normalized energy usage results for Atherton are plotted in the following:
+```{r}
+ggplot() +   
+  geom_line(data = atherton_final_plot, aes(x = YEAR, y = KBTUPerUnit, color = group) ) +
+    labs(
+       x = "Year",
+       y = "Normalized KBTU Per Resident/Job Per HDD/CDD",
+       title = "Atherton Normalized Annual Energy Use 2013 to 2019")
+
+```
+
+The results from the above chart are unsurprising given that Atherton is predominantly a residential town. Energy use on a per resident basis is highest for electricity usage followed by gas usage and the usage trends between 2013 to 2019 are generally stable.
+
+### Comparison of Atherton Vehicle Emissions against Building Emissions
+
+The following plot compares total vehicle and building emissions in Atherton from 2013 to 2019:
+```{r}
+building_plot <- atherton_pge_data %>%
+  group_by(YEAR) %>%
+  summarize(TOTALTCO2E = sum(TOTALTCO2E)) %>%
+  mutate(group = "Building Emissions") %>%
+  rename("year"="YEAR") %>%
+  rename("total_ghg"="TOTALTCO2E")
+
+
+vehicle_plot <- total_ghg_atherton %>%
+  select(year, total_ghg) %>%
+  mutate(group = "Vehicle Emissions")
+
+total_emissions_plot <- building_plot %>%
+  rbind(vehicle_plot)
+
+ggplot() +
+ geom_line(data = total_emissions_plot, aes(x = year, y = total_ghg, color = group) ) +
+    labs(
+       x = "Year",
+       y = "Metric Tonnes of CO2e",
+       title = "Atherthon Building versus Vehicle GHG Emissions from 2013 to 2019")
+
+```
+
+From the above chart, vehicles are a bigger source of GHG emissions in Atherton than buildings which is expected given Atherton's standing as a rural residential community with no industrial land-use base. As explained earlier, there is a noticeable decreasing trend in building emissions which can be attributed to the increasing uptake of electricity production using renewable energy sources and homeowners making their residences more energy efficient. 
+
+Vehicle emissions on the other hand increased between 2014 to 2018 before declining in 2019. This suggests that an increasing number of households in Atherton own more than 1 vehicle while the recent decline could be an indication of more residents opting to shift away from internal combustion engine vehicles towards hybrid or electric vehicles (EV). Nevertheless, the significantly higher vehicle emission levels indicate that more work is needed to reduce transportation emissions in Atherton.
+
+## Conclusion
+
+In summary, Atherton has made significant progress in reducing GHG emissions from building sources (33% decline in total building emissions over 7 years) and looks poised to make more headway on this front given California's climate-forward energy policies. To push the sustainability agenda further, more study could be carried out to determine the appropriate measures or initiatives that help reduce vehicle GHG emissions. This could include surveys on commuting behavior and patterns or lack of alternative commuting modes in the city. For instance, while planners may elect to pursue a strategy delivering more EV charging infrastructure to support the uptake of EVs in the city, this needs to be weighed holistically against other proposals such as improving access to public transit or changing residents' commuting behavior (i.e. encourage carpooling by levying higher tolls on single-occupancy vehicles).
+
+This study also does not account for Scope 3 GHG emissions in Atherton City, which studies suggest often represent the largest portion of GHG inventories. While there may be logical ways to fairly allocate Scope 3 emissions between manufacturers and throughout the value chain down to the eventual consumers, it is important to acknowledge that accounting for Scope 3 measures is an important first step in the overall GHG reduction conversation. However, it may be difficult to discuss how a GHG accounting methodology for Bay Area cities could be implemented without first discussing how to approach standardizing the measurement, reporting and verification processes for Scope 3 emissions. The current lack of a common easily understood method to accurately track and measure such emissions is a challenge that needs to be overcome.
+
+## References Used
+
+1. The 10 most expensive ZIP codes in the US 2021: https://www.cnbc.com/2021/11/19/10-most-expensive-zip-codes-in-the-us-in-2021.html
+2. Number of Working Days in California: https://excelnotes.com/working-days-in-california-in-2019/
+3. Atherton City, CA. https://www.ci.atherton.ca.us/
+  
