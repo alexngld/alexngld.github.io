@@ -712,7 +712,7 @@ fc_plot <-
     yaxis = list(
       title = "Percent Damage"
     ),
-    title = "Expected Foster City vehicle damage<br> during 100-year storm by flood depth"
+    title = "Expected Foster City vehicle damage during<br> 100-year storm by base sea level rise"
   ) %>% 
   config(displayModeBar = F)
 
