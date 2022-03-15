@@ -1,0 +1,67 @@
+---
+title: "AlexanderNg_A5_DB2_PM25EquityAnalysis"
+runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: fill
+---
+
+```{r global, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(leaflet)
+library(sf)
+library(plotly)
+library(tigris)
+library(dplyr)
+library(shiny)
+
+
+smc_pm25_race_fill <- readRDS("smc_pm25_race_fill.rds")
+smc_income_pm25_plot <- readRDS("smc_income_pm25_plot.rds")
+smc_income_pm25 <- readRDS("smc_income_pm25.rds")
+
+equity_choices <- data.frame(choices = c("Race", "Income"))
+
+
+
+
+```
+
+Inputs {.sidebar}
+-------------------------------------
+
+  
+```{r}
+selectInput(
+  inputId = "analysis", 
+  label = "Equity Plot:",
+  choices = equity_choices$choices, 
+  selected = "Income"
+)
+```
+
+Column
+-------------------------------------
+
+### Plot
+
+```{r}
+plotlyOutput("plot")
+```
+
+```{r, context = "server"}
+observeEvent(input$analysis, {
+  if(input$analysis == "Income"){chart <- smc_income_pm25_plot} else {chart <- smc_pm25_race_fill}
+  
+  output$plot <- renderPlotly({
+    chart %>% 
+      ggplotly() %>% 
+      config(displayModeBar = F)
+  })
+  
+})
+```
+
+
+

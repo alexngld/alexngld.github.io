@@ -1,0 +1,133 @@
+---
+title: "AlexanderNg_A5_DB1_PM25ReadingsbyJurisdiction"
+runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: fill
+---
+
+```{r global, include=FALSE}
+library(flexdashboard)
+library(shiny)
+library(tidyverse)
+library(leaflet)
+library(sf)
+library(plotly)
+library(tigris)
+library(dplyr)
+
+smc_pm25_voronoi_cbg <- readRDS("smc_pm25_voronoi_cbg.rds")
+smc_cbgs <- readRDS("smc_cbgs.rds")
+smc_sensor_data <- readRDS("smc_sensor_data.rds")
+select_smc_boundary <- places("CA", cb = T) %>% 
+  filter(NAME %in% c("Redwood City", "Menlo Park", "Burlingame", "Milbrae", "San Bruno", "San Carlos", "San Mateo"))
+
+```
+
+Inputs {.sidebar}
+-------------------------------------
+
+```{r}
+selectInput(
+  inputId = "city", 
+  label = "Jurisdiction:",
+  choices = select_smc_boundary$NAME, 
+  selected = "Redwood City"
+)
+```
+
+Column
+-------------------------------------
+
+### Plot of PM2.5 Levels
+
+```{r}
+plotlyOutput("plot")
+```
+
+```{r, context = "server"}
+observeEvent(input$city, {
+  
+  chart <- smc_sensor_data %>% 
+  st_as_sf()%>%
+  .[select_smc_boundary %>% st_transform(4326) %>%
+    filter(NAME == input$city),] %>%
+  group_by(date) %>%
+  summarize(estimate = mean(PM25)) %>%
+  ggplot() +
+  geom_line(
+    aes(
+      x = date,
+      y = estimate
+    )
+  )
+
+
+  
+  output$plot <- renderPlotly({
+    chart %>% 
+      ggplotly() %>% 
+      config(displayModeBar = F)
+  })
+  
+})
+```
+
+Column
+-------------------------------------
+
+### PM2.5 Heat Map
+
+```{r}
+leafletOutput("map")
+```
+
+```{r, context = "server"}
+cbg_pal <- colorNumeric(
+  palette = "RdYlGn",
+  domain = 
+    smc_pm25_voronoi_cbg$PM25
+)
+  
+
+output$map <- renderLeaflet({
+  leaflet() %>% 
+    addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+    addPolygons(
+      data = smc_pm25_voronoi_cbg,
+      fillColor = ~cbg_pal(PM25),
+      color = "white",
+      opacity = 0.5,
+      fillOpacity = 0.5,
+      label = ~PM25 %>% signif(2),
+      weight = 1,
+      highlightOptions = highlightOptions(
+        weight = 2,
+        opacity = 1
+      )
+    )
+})
+
+```
+
+
+```{r, context = "server"}
+
+observeEvent(input$city, {
+  
+  selected <- select_smc_boundary %>% st_transform(4326) %>%
+       filter(NAME == input$city)
+  
+  leafletProxy("map") %>% 
+    removeShape("selected") %>% 
+    addPolygons(
+      data = selected,
+      fill = F,
+      color = "black",
+      weight = 2,
+      opacity = 1,
+      layerId = "selected"
+    )
+  
+})
+```

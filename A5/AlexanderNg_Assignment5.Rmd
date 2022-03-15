@@ -1,0 +1,767 @@
+---
+title: "AlexanderNg_A5"
+author: "AlexanderNg"
+date: "3/15/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(raster)
+library(stringr)
+library(tigris)
+library(tidyverse)
+library(readxl)
+library(censusapi)
+library(sf)
+library(leaflet)
+library(htmltools)
+library(tidycensus)
+library(mapview)
+library(dplyr)
+library(ggrepel)
+library(ggplot2)
+library(jsonlite)
+library(stars)
+library(mapboxapi)
+library(tiff)
+
+knitr::opts_chunk$set(echo = F)
+knitr::opts_chunk$set(warning = F, message = F)
+
+```
+
+## Introduction
+
+This report provides an analysis of PM2.5 air quality in San Mateo County using sensor data from PurpleAir. The analysis is carried out on 3 fronts: 
+(i) Geographic Distribution of Air Quality between different county jurisdictions;
+(ii) Equity Analysis to identify disproportionate burden of air pollution between different income and racial demographics; and
+(iii) Amalgating the collected data to determine a predicted scoring system to advise on the next best location for a sensor to be located based on user-defined weightings
+
+## Part 1: Air Quality across different geographic distributions
+
+To gather more information on the geographic distribution of sensors across San Mateo County, data on the location where Purple Air's sensors was extracted and the corresponding air quality indices (AQI) ranges from these sensors plotted in the following map:
+
+```{r}
+library(jsonlite)
+
+pa_api <- "D0869B47-99B2-11EC-B9BF-42010A800003"
+
+# json <- fromJSON(paste0(
+#     "https://api.purpleair.com/v1/sensors?api_key=",
+#     pa_api,
+#     "&fields=name,location_type,latitude,longitude,pm2.5_1week,temperature,humidity,primary_id_a,primary_key_a,secondary_id_a,secondary_key_a,primary_id_b,primary_key_b,secondary_id_b,secondary_key_b"
+#   ))
+# 
+# saveRDS(json, "json.rds")
+
+json <- readRDS("json.rds")
+
+all_sensors <- json %>% 
+  .$data %>% 
+  as.data.frame() %>% 
+  set_names(json$fields) %>% 
+  filter(
+    !is.na(longitude),
+    !is.na(latitude)
+  ) %>% 
+  st_as_sf(coords = c("longitude","latitude"), crs = 4326) %>% 
+  mutate(location_type = ifelse(
+    location_type == 0,
+    "outside",
+    "inside"
+  ))
+```
+
+```{r}
+smc_county <-
+  c(
+    "San Mateo"
+  )
+
+smc_counties <-
+  counties("CA", cb = T, progress_bar = F) %>%
+  filter(NAME %in% smc_county) %>%
+  st_transform(4326)
+
+smc_sensors <-
+  all_sensors %>% 
+  .[smc_counties, ]
+
+
+```
+
+```{r}
+smc_sensors_clean <- smc_sensors %>% 
+  filter(
+    !is.na(pm2.5_1week),
+    !is.na(humidity)
+  ) %>% 
+  mutate(
+    PM25 = 0.524*as.numeric(pm2.5_1week) - 0.0852*as.numeric(humidity) + 5.72,
+    AQI = case_when(
+      PM25 <= 12 ~ 
+        paste(round(50/12*PM25), "Good"),
+      PM25 <= 35.4 ~ 
+        paste(round((100-51)/(35.4-12)*(PM25 - 12) + 51), "Moderate"),
+      PM25 <= 55.4 ~
+        paste(round((150-101)/(55.4-35.4)*(PM25 - 35.4) + 101), "Moderately Unhealthy"),
+      PM25 <= 150.4 ~
+        paste(round((200-151)/(150.4-55.4)*(PM25 - 55.4) + 151), "Unhealthy"),
+      PM25 <= 250.4 ~
+        paste(round((300-201)/(250.4-150.4)*(PM25 - 150.4) + 201), "Very Unhealthy"),
+      TRUE ~ 
+        paste(round((500-301)/(500.4-250.5)*(PM25 - 250.5) + 301), "Hazardous")
+    )
+  ) %>% 
+  separate(
+    AQI,
+    into = c("AQI","AQI_Cat"),
+    sep = " ",
+    extra = "merge"
+  ) %>% 
+  mutate(
+    AQI = as.numeric(AQI),
+    AQI_Cat = AQI_Cat %>% factor(levels = c("Good", "Moderate","Moderately Unhealthy","Unhealthy","Very Unhealthy","Hazardous"))
+  )
+```
+
+```{r}
+aqi_pal <- colorFactor(
+  palette = "RdYlGn",
+  reverse = T,
+  domain = smc_sensors_clean$AQI_Cat
+)
+
+smc_sensors_clean %>% 
+  filter(location_type == "outside") %>% 
+  leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addCircleMarkers(
+    color = ~aqi_pal(AQI_Cat),
+    label = ~AQI_Cat,
+    radius = 5,
+    opacity = 0.75
+  ) %>% 
+  addLegend(
+    pal = aqi_pal,
+    values = ~AQI_Cat
+  )
+
+saveRDS(smc_sensors_clean, "smc_sensors_clean.rds")
+```
+
+
+```{r, include = FALSE}
+select_smc_boundary <- places("CA", cb = T) %>% 
+  filter(NAME %in% c("Redwood City", "Menlo Park", "Burlingame", "Milbrae", "San Bruno", "San Carlos", "San Mateo")) %>% 
+  st_transform(4326)
+
+select_smc_sensors <- smc_sensors_clean %>% 
+  .[select_smc_boundary,]
+
+dates <- data.frame(c("2022-02-01%2000:08:00","2022-02-08%2000:08:00","2022-02-15%2000:08:00","2022-02-22%2000:08:00"),c("2022-02-08%2000:08:00","2022-02-15%2000:08:00","2022-02-22%2000:08:00","2022-03-01%2000:08:00"))
+
+colnames(dates)[1] <- "start"
+colnames(dates)[2] <- "end"
+
+
+```
+
+Next, air quality data for the month of February was collated and compiled from 6 different jurisdictions in San Mateo County comprising Redwood City, Menlo Park, Burlingame, San Bruno, San Carlos and San Mateo. "Voronoi polygons" were created to interpolate air quality information for specific census block groups using the st_voronoi function.
+
+```{r}
+# 
+# smc_sensor_data <- 
+#   1:4 %>%
+#   map_dfr(function(x){
+#   1:nrow(select_smc_sensors) %>% 
+#   map_dfr(function(row){
+#   
+#   print(paste0(row,". ",select_smc_sensors[row,]$sensor_index))
+#   
+#   a1 <- read_csv(paste0(
+#     "https://api.thingspeak.com/channels/",
+#     select_smc_sensors[row,]$primary_id_a,
+#     "/feeds.csv?api_key=",
+#     select_smc_sensors[row,]$primary_key_a,
+#     "&average=1440&round=3&start=",dates[x,1],
+#     "&end=", dates[x,2], 
+#     "&timezone=America/Los_Angeles"
+#   ), show_col_types = F) %>% 
+#     set_names(c("created_at","PM1.0_CF_1_ug/m3_A","PM2.5_CF_1_ug/m3_A","PM10.0_CF_1_ug/m3_A","Uptime_Minutes_A","RSSI_dbm_A","Temperature_F_A","Humidity_%_A","PM2.5_CF_ATM_ug/m3_A"))
+#       
+#   a2 <- read_csv(paste0(
+#     "https://api.thingspeak.com/channels/",
+#     select_smc_sensors[row,]$secondary_id_a,
+#     "/feeds.csv?api_key=",
+#     select_smc_sensors[row,]$secondary_key_a,
+#     "&average=1440&round=3&start=",dates[x,1],
+#     "&end=", dates[x,2], 
+#     "&timezone=America/Los_Angeles"
+#   ), show_col_types = F) %>% 
+#     set_names(c("created_at","0.3um/dl_A","0.5um/dl_A","1.0um/dl_A","2.5um/dl_A","5.0um/dl_A","10.0um/dl_A","PM1.0_CF_ATM_ug/m3_A","PM10_CF_ATM_ug/m3_A"))
+#     
+#   b1 <- read_csv(paste0(
+#     "https://api.thingspeak.com/channels/",
+#     select_smc_sensors[row,]$primary_id_b,
+#     "/feeds.csv?api_key=",
+#     select_smc_sensors[row,]$primary_key_b,
+#     "&average=1440&round=3&start=",dates[x,1],
+#     "&end=", dates[x,2], 
+#     "&timezone=America/Los_Angeles"
+#   ), show_col_types = F) %>% 
+#     set_names(c("created_at","PM1.0_CF_1_ug/m3_B","PM2.5_CF_1_ug/m3_B","PM10.0_CF_1_ug/m3_B","HEAP_B","ADC0_voltage_B","Atmos_Pres_B","Not_Used_B","PM2.5_CF_ATM_ug/m3_B"))
+#   
+#   b2 <- read_csv(paste0(
+#     "https://api.thingspeak.com/channels/",
+#     select_smc_sensors[row,]$secondary_id_b,
+#     "/feeds.csv?api_key=",
+#     select_smc_sensors[row,]$secondary_key_b,
+#     "&average=1440&round=3&start=",dates[x,1],
+#     "&end=", dates[x,2], 
+#     "&timezone=America/Los_Angeles"
+#   ), show_col_types = F) %>% 
+#     set_names(c("created_at","0.3um/dl_B","0.5um/dl_B","1.0um/dl_B","2.5um/dl_B","5.0um/dl_B","10.0um/dl_B","PM1.0_CF_ATM_ug/m3_B","PM10_CF_ATM_ug/m3_B"))
+#   
+#   combined <- a1 %>% 
+#     left_join(a2, by = "created_at") %>% 
+#     left_join(b1, by = "created_at") %>% 
+#     left_join(b2, by = "created_at") %>% 
+#     transmute(
+#       date = as.Date(created_at),
+#       ID = as.numeric(select_smc_sensors[row,]$sensor_index),
+#       Location = select_smc_sensors[row,]$location_type,
+#       PM25 = 0.524*as.numeric(`PM2.5_CF_1_ug/m3_A`) - 0.0852*as.numeric(`Humidity_%_A`) + 5.72
+#     )
+# 
+# })
+#     
+#     })
+#saveRDS(smc_sensor_data, "smc_sensor_data.rds")
+
+smc_sensor_data <- readRDS("smc_sensor_data.rds")
+
+smc_sensor_data <- readRDS("smc_sensor_data.rds") %>%
+  st_as_sf() %>% 
+  st_transform(4326)
+
+smc_sensor_grouped <- smc_sensor_data %>%
+  group_by(ID, Location) %>% 
+  summarize(
+    PM25 = mean(PM25, na.rm = T)
+  )
+```
+
+```{r}
+select_smc_sensors$sensor_index <- as.numeric(select_smc_sensors$sensor_index)
+
+smc_sensor_outdoor <- smc_sensor_grouped %>%
+  filter(Location == "outside") 
+```
+
+The resulting plot of Voronoi polygons in San Mateo County can be found in the following:
+```{r}
+smc_pm25_voronoi <-
+  smc_sensor_grouped %>%
+  filter(Location == "outside") %>% 
+  st_union() %>% 
+  st_voronoi() %>% 
+  st_cast() %>% 
+  st_as_sf() %>% 
+  st_intersection(.,st_union(smc_counties)) %>% 
+  st_join(smc_sensors_clean %>% filter(location_type == "outside"))
+
+ggplot(smc_pm25_voronoi) + geom_sf()  
+```
+
+Using this information, a database of PM2.5 air quality trends in February for the 6 different jurisdictions could be plotted. For ease of visualization, the trend information and geographic location for these jurisdictions have been plotted in the following dashboard so that users can view and interpret these results more readily:
+
+https://alexngld.shinyapps.io/AlexanderNg_A5_DB1/
+
+In general, air quality across all these regions were relatively uniform in the month of February with the exception of Redwood City which has higher mean PM2.5 levels.
+
+
+```{r}
+smc_cbgs <- block_groups("CA","San Mateo", cb = T, progress_bar = F) %>% 
+  st_transform(4326)
+
+saveRDS(smc_cbgs, "smc_cbgs.rds")
+
+smc_pm25_voronoi_cbg <-
+  smc_pm25_voronoi %>% 
+  st_intersection(smc_cbgs) %>% 
+  st_make_valid() %>% 
+  mutate(
+    area = st_area(.) %>% as.numeric()
+  ) %>% 
+  st_drop_geometry() %>% 
+  group_by(GEOID) %>% 
+  summarize(
+    PM25 = weighted.mean(PM25, area, na.rm = T)
+  ) %>% 
+  left_join(smc_cbgs %>% dplyr::select(GEOID)) %>% 
+  st_as_sf()
+
+saveRDS(smc_pm25_voronoi_cbg, "smc_pm25_voronoi_cbg.rds")
+```
+
+## Part 2: Population Equity
+
+Next, equity analyses were carried out to compare air quality exposure between different income groups and racial demographics. In these analyses, ACS data was used to extract income levels at the CBG level while Decennial data was used to determine racial demographics at the block level. An equity analysis was then carried out based on the last week of average air quality data through Purple Air.
+
+```{r}
+library(tidyverse)
+library(censusapi)
+
+Sys.setenv(CENSUS_KEY="c8aa67e4086b4b5ce3a8717f59faa9a28f611dab")
+
+acs_vars_2019_5yr <-
+  listCensusMetadata(
+    name = "2019/acs/acs5",
+    type = "variables"
+  )
+```
+
+The same SMC sensor data from Part 1 was used, with the major differences being filtered to select "inside" sensors as well as including only data from last week of February.
+```{r}
+#PurpleAir data for the last week:use smc_sensors_
+
+# smc_blocks <- blocks("CA","San Mateo") %>%
+#   st_transform(4326)
+# 
+# saveRDS(smc_blocks, "smc_blocks.rds")
+
+smc_pm25_voronoi2 <-
+  smc_sensors_clean %>%
+  filter(location_type == "inside") %>%
+  st_union() %>%
+  st_voronoi() %>%
+  st_cast() %>%
+  st_as_sf() %>%
+  st_intersection(.,st_union(smc_counties)) %>%
+  st_join(smc_sensors_clean %>% filter(location_type == "inside"))
+# 
+# 
+# 
+# smc_pm25_voronoi_block <-
+#   smc_pm25_voronoi2 %>% 
+#   st_intersection(smc_blocks)
+# 
+# saveRDS(smc_pm25_voronoi_block, "smc_pm25_voronoi_block.rds")
+
+smc_blocks <- readRDS("smc_blocks.rds")
+smc_pm25_voronoi_block <- readRDS("smc_pm25_voronoi_block.rds")
+
+smc_pm25_voronoi_block2 <- smc_pm25_voronoi_block %>%
+  st_make_valid() %>% 
+  mutate(
+    area = st_area(.) %>% as.numeric()
+  ) %>% 
+  st_drop_geometry() %>% 
+  group_by(GEOID10) %>% 
+  summarize(
+    PM25 = weighted.mean(PM25, area, na.rm = T)
+  ) %>% 
+  left_join(smc_blocks %>% dplyr::select(GEOID10)) %>% 
+  st_as_sf()
+
+```
+
+
+```{r}
+#Repeat for cbg
+
+smc_cbgs <- readRDS("smc_cbgs.rds")
+
+smc_pm25_voronoi_block3 <-
+  smc_pm25_voronoi2 %>%
+  st_intersection(smc_cbgs) %>%
+  st_make_valid() %>% 
+  mutate(
+    area = st_area(.) %>% as.numeric()
+  ) %>% 
+  st_drop_geometry() %>% 
+  group_by(GEOID) %>% 
+  summarize(
+    PM25 = weighted.mean(PM25, area, na.rm = T)
+  ) %>% 
+  left_join(smc_cbgs %>% dplyr::select(GEOID)) %>% 
+  st_as_sf()
+
+```
+
+Income distributions for San Mateo County was extracted using ACS 2019 data Group B19001. Income information was combined with the PM2.5 data through a left_join function using the respective CBG and GEOID fields and segregated accordingly based on PM2.5 Quartile ranges.
+```{r}
+smc_income <-
+  getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "block group:*",
+    regionin = "state:06+county:081",
+    vars = "group(B19001)"
+  ) %>%
+  select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "name",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_5yr %>%
+      select(name, label)
+  ) %>%
+  select(-name) %>%
+  separate(
+    label,
+    into = c(NA,NA,"income"),
+    sep = "!!"
+  ) %>%
+  filter(!is.na(income)) %>%
+  mutate(
+    state = "06",
+    cbg = paste0(state,county,tract,block_group)
+  ) %>%
+  group_by(cbg, income) %>%
+  summarise(estimate=sum(estimate))
+```
+
+
+```{r}
+
+smc_income_pm25_mean <- mean(smc_pm25_voronoi_block3$PM25)
+
+smc_income_pm25 <- smc_income %>%
+  left_join(smc_pm25_voronoi_block3, by = c("cbg" = "GEOID")) %>%
+  filter(!is.na(PM25))
+
+smc_income_pm25$quartile <- ntile(smc_income_pm25$PM25, 4)
+
+smc_income_pm25_final <- smc_income_pm25 %>%
+  mutate(quartile = case_when(
+    quartile == 1 ~ paste0(round(quantile(smc_income_pm25$PM25)[1],2), " to ", round(quantile(smc_income_pm25$PM25)[2],2)),
+    quartile == 2 ~ paste0(round(quantile(smc_income_pm25$PM25)[2],2), " to ", round(quantile(smc_income_pm25$PM25)[3],2)),
+    quartile == 3 ~ paste0(round(quantile(smc_income_pm25$PM25)[3],2), " to ", round(quantile(smc_income_pm25$PM25)[4],2)),
+    quartile == 4 ~ paste0(round(quantile(smc_income_pm25$PM25)[4],2), " to ", round(quantile(smc_income_pm25$PM25)[5],2)),
+  )) %>%
+  mutate(income = 
+           case_when(
+        income == "Less than $10,000" ~ "Less than $10,000",
+        income == "$10,000 to $14,999" ~ "$10,000 to 14,999",
+        income == "$15,000 to $19,999" ~ "$15,000 to 19,999",
+        income == "$20,000 to $24,999" ~ "$20,000 to 24,999",
+        income == "$25,000 to $29,999" ~ "$25,000 to 29,999",
+        income == "$30,000 to $34,999" ~ "$30,000 to 34,999",
+        income == "$35,000 to $39,999" ~ "$35,000 to 39,999",
+        income == "$40,000 to $44,999" ~ "$40,000 to 44,999",
+        income == "$45,000 to $49,999" ~ "$45,000 to 49,999",
+        income == "$50,000 to $59,999" ~ "$50,000 to 59,999",
+        income == "$60,000 to $74,999" ~ "$60,000 to 74,999",
+        income == "$75,000 to $99,999" ~ "$75,000 to 99,999",
+        income == "$100,000 to $124,999" ~ "$100,000 to 124,999",
+        income == "$125,000 to $149,999" ~ "$125,000 to 149,999",
+        income == "$150,000 to $199,999" ~ "$150,000 to 199,999",
+        income == "$200,000 or more" ~ "$200,000 or more"
+        ))
+  
+  
+saveRDS(smc_income_pm25_final, "smc_income_pm25_final.rds")
+saveRDS(smc_income_pm25, "smc_income_pm25.rds")
+
+income_levels <- c("Less than $10,000","$10,000 to 14,999","$15,000 to 19,999", "$20,000 to 24,999", "$25,000 to 29,999", "$30,000 to 34,999", "$35,000 to 39,999", "$40,000 to 44,999", "$45,000 to 49,999", "$50,000 to 59,999", "$60,000 to 74,999", "$75,000 to 99,999", "$100,000 to 124,999", "$125,000 to 149,999", "$150,000 to 199,999", "$200,000 or more") 
+  
+quartile_levels <- c(paste0(round(quantile(smc_income_pm25$PM25)[1],2), " to ", round(quantile(smc_income_pm25$PM25)[2],2)),paste0(round(quantile(smc_income_pm25$PM25)[2],2), " to ", round(quantile(smc_income_pm25$PM25)[3],2)), paste0(round(quantile(smc_income_pm25$PM25)[3],2), " to ", round(quantile(smc_income_pm25$PM25)[4],2)), paste0(round(quantile(smc_income_pm25$PM25)[4],2), " to ", round(quantile(smc_income_pm25$PM25)[5],2)))
+
+smc_income_pm25_plot <- smc_income_pm25_final %>%
+  group_by(income, quartile) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = income %>% factor(levels = rev(c("Less than $10,000","$10,000 to 14,999","$15,000 to 19,999", "$20,000 to 24,999", "$25,000 to 29,999", "$30,000 to 34,999", "$35,000 to 39,999", "$40,000 to 44,999", "$45,000 to 49,999", "$50,000 to 59,999", "$60,000 to 74,999", "$75,000 to 99,999", "$100,000 to 124,999", "$125,000 to 149,999", "$150,000 to 199,999", "$200,000 or more"))),
+      y = estimate,
+      fill = quartile %>% factor(levels = rev(c(paste0(round(quantile(smc_income_pm25$PM25)[1],2), " to ", round(quantile(smc_income_pm25$PM25)[2],2)),paste0(round(quantile(smc_income_pm25$PM25)[2],2), " to ", round(quantile(smc_income_pm25$PM25)[3],2)), paste0(round(quantile(smc_income_pm25$PM25)[3],2), " to ", round(quantile(smc_income_pm25$PM25)[4],2)), paste0(round(quantile(smc_income_pm25$PM25)[4],2), " to ", round(quantile(smc_income_pm25$PM25)[5],2)))))
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Household income",
+    y = "Proportion of households",
+    title = "San Mateo County Air Quality by Income",
+    fill = "PM2.5 Quartile Range"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )  +
+  guides(
+    fill = guide_legend(
+      reverse = T
+    )
+  )
+
+
+# smc_income_pm25_plot
+```
+Racial demographics for San Mateo County was extracted through Decennial 2020 data Group P1. Race categories was combined with PM2.5 data through a left_join function using the respective block and GEOID10 fields and segregated accordingly based on the respective PM2.5 scores.
+
+```{r}
+dec_vars_2020 <-
+  listCensusMetadata(
+    name = "2020/dec/pl",
+    type = "variables"
+  )
+
+smc_pop_race_2020 <-
+  getCensus(
+    name = "dec/pl",
+    vintage = 2020,
+    region = "block:*", 
+    regionin = "state:06+county:081",
+    vars = "group(P1)"
+  ) %>% 
+  mutate(
+    block =
+      paste0(state,county,tract,block)
+  ) %>% 
+  select(!c(GEO_ID,state,county,tract,NAME) & !ends_with(c("NA"))) %>% 
+  pivot_longer(
+    ends_with("N"),
+    names_to = "name",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    dec_vars_2020 %>% 
+      select(name, label)
+  ) %>% 
+  select(-name) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"category1","category2"),
+    sep = "!!"
+  ) %>%
+  mutate(
+    race = case_when(
+      category1 == "Population of two or more races:" & is.na(category2) ~ "Two or more races",
+      category1 == "Population of two or more races:" ~ "",
+      !is.na(category2) ~ category2,
+      TRUE ~ ""
+    )
+  ) %>%
+  filter(race != "")
+  
+```
+
+```{r}
+smc_race_pm25 <- smc_pop_race_2020 %>%
+  left_join(smc_pm25_voronoi_block2, by = c("block" = "GEOID10")) %>% 
+  mutate(
+    PM2.5_tier =
+      case_when(
+        PM25 < 4 ~ "<4",
+        PM25 < 5 ~ "4-5",
+        PM25 < 6 ~ "5-6",
+        PM25 < 7 ~ "6-7",
+        PM25 < 8 ~ "7-8",
+        PM25 > 8 ~ "8+",
+        TRUE ~ "NA",
+        
+      ) 
+  ) %>% 
+  group_by(race, PM2.5_tier) %>% 
+  summarize(estimate = sum(estimate, na.rm = T)) %>%
+  filter(PM2.5_tier != "NA")
+
+saveRDS(smc_race_pm25, "smc_race_pm25.rds")
+```
+
+```{r}
+census_race_categories <- 
+  c(
+    "White Alone",
+    "Black or African American",
+    "American Indian and Alaska Native Alone",
+    "Asian Alone",
+    "Native Hawaiian and Other Pacific Islander Alone",
+    "Some Other Race Alone",
+    "Two or More Races"
+  )
+
+smc_pm25_race_fill <-
+  smc_race_pm25 %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = PM2.5_tier %>% factor(levels = (c("<4","4-5","5-6","6-7","7-8","8+"))),
+      y = estimate,
+      fill = race
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "PM2.5",
+    y = "Proportion of households",
+    title = "San Mateo County PM2.5 exposure by race",
+    subtitle = "Last Week of February 2022 PM2.5 Exposure",
+    fill = "Race"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  ) +
+  guides(
+    fill = guide_legend(
+      reverse = T
+    )
+  )
+
+# smc_pm25_race_fill
+
+saveRDS(smc_pm25_race_fill, "smc_pm25_race_fill.rds")
+saveRDS(smc_income_pm25_plot, "smc_income_pm25_plot.rds")
+```
+
+The resulting income and racial equity analyses for San Mateo County can be found in the following Dashboard, for users to toggle between Race and Income analsis accordingly:
+
+https://alexngld.shinyapps.io/AlexanderNg_A5_DB2/
+
+On racial equity, households identifying as "Asian Alone" are more likely to experience higher PM2.5 levels whereas the distribution of households across different income tiers are relatively even across the respective PM2.5 quartile ranges.
+
+
+```{r}
+smc_pm25_race_fill <- readRDS("smc_pm25_race_fill.rds")
+smc_income_pm25_plot <- readRDS("smc_income_pm25_plot.rds")
+```
+
+## Part 3: Sensor Recommendation based on Air Quality Data Availability in San Mateo County
+
+This segment of the report focuses on designing a scoring system to predict the disproportionate availability of air quality information. The scoring metric focuses of racial distribution by race, and the user can define the proposed weights accorded to each different racial demographic. 
+
+The following maps outlines the geographic coverage of each sensor in the respective CBGs. Through this, we can determine CBGs where there are multiple sensors providing overlapping coverage.
+```{r}
+mapview(smc_sensors) + mapview(smc_cbgs)
+
+#change to outdoors, factors of 
+
+smc_sensors_buffer <- smc_sensors %>%
+  st_buffer(dist = 400) %>%
+  filter(location_type == "outside") #filter to outdoors and re-run overlap
+
+# cbg_overlap <-  smc_sensors_buffer %>%
+#   st_intersection(smc_cbgs) %>%
+#   st_make_valid() %>%
+#   mutate(
+#     area = st_area(.) %>% as.numeric()
+#   )
+# saveRDS(cbg_overlap, "cbg_overlap.rds")
+cbg_overlap <- readRDS("cbg_overlap.rds")
+
+cbg_areas <- smc_cbgs %>%
+  st_make_valid() %>%
+  mutate(cbg_area = st_area(.)) %>%
+  select(GEOID, cbg_area) %>%
+  st_drop_geometry()
+
+attributes(cbg_areas$cbg_area) = NULL
+
+options(scipen = 100)
+
+cbg_sensor_area <- cbg_overlap %>%
+  group_by(GEOID) %>%
+  summarize(area = sum(area)) %>%
+  left_join(cbg_areas) %>%
+  mutate(perc_area = area/cbg_area) # if this is greater than 1, means multiple sensors reach it
+
+# get pop and % key races for each cbg then create formula 
+
+#then sort them based on lowest scores and plot centroids of CBGS to estimate where to put sensors based on this
+
+mapview(cbg_sensor_area) + mapview(smc_cbgs)
+
+# Do we wanna just count total area coverred by sensors in this calc? Then take lowest scored cbgs and place at the centroid of that cbg? Maybe get % of area of each cbg covered and that % gets multiplied by the weighting in the dashboard????
+
+
+```
+
+```{r}
+smc_pop_race_2020_cbg <-
+  getCensus(
+    name = "dec/pl",
+    vintage = 2020,
+    region = "block group:*", 
+    regionin = "state:06+county:081",
+    vars = "group(P1)"
+  ) %>% 
+  mutate(
+    cbg =
+      paste0(state,county,tract,block_group)
+  ) %>% 
+  select(!c(GEO_ID,state,county,tract,NAME) & !ends_with(c("NA"))) %>% 
+  pivot_longer(
+    ends_with("N"),
+    names_to = "name",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    dec_vars_2020 %>% 
+      select(name, label)
+  ) %>% 
+  select(-name) %>% 
+  separate(
+    label,
+    into = c(NA,NA,"category1","category2"),
+    sep = "!!"
+  ) %>%
+  mutate(
+    race = case_when(
+      category1 == "Population of two or more races:" & is.na(category2) ~ "Two or more races",
+      category1 == "Population of two or more races:" ~ "",
+      !is.na(category2) ~ category2,
+      TRUE ~ ""
+    )
+  ) %>%
+  filter(race != "") %>%
+  select(-category1, -category2) %>%
+  pivot_wider(
+    names_from = "race",
+    values_from = "estimate"
+  ) %>%
+  rename("GEOID" = "cbg") 
+
+smc_pop_race_2020_cbg$total <- rowSums(smc_pop_race_2020_cbg[3:8], na.rm=TRUE)
+
+## could calc pop density, and race breakdown and use those as weights.
+```
+
+```{r}
+cbg_sensor_combined <- cbg_sensor_area %>%
+  left_join(smc_pop_race_2020_cbg) %>%
+  filter(!is.na(total)) %>%
+  mutate(density = total/cbg_area*2.59e+6) %>% #people per sq.mile
+  mutate(
+    perc_white = `White alone`/total,
+    perc_black = `Black or African American alone`/total,
+    perc_asian = `Asian alone`/total,
+    perc_native = `American Indian and Alaska Native alone`/total,
+    perc_other = (`Some Other Race alone` + `Two or more races`)/total,
+  ) %>%
+  select(perc_area, perc_white, perc_black, perc_asian, perc_native, perc_other, density, GEOID) %>%
+  mutate(perc_density = density/max(density)) %>%
+  st_drop_geometry() %>%
+  left_join(smc_cbgs %>% select(GEOID)) %>%
+  st_as_sf()
+  
+
+saveRDS(cbg_sensor_combined, "cbg_sensor_combined.rds")
+```
+
+Next, racial demographics from Decennial data was used to calculate the relative racial population density in each CBG based on the geographic size per square mile and racial mix. Weights ranging between 0 to 1 could be assigned to different racial demographics to provide a proposed  scoring based on on sensor coverage by multiplying the weighting against the racial density. Accordingly, a new proposed sensor location would be assigned to the CBG that has the lowest score based on the assigned weight distribution. This scoring dashboard is found in the following link:
+
+https://alexngld.shinyapps.io/AlexanderNg_A5_DB3/
+
+## Conclusion
+
+The techniques highlighted in this report demonstrate the strong potential for translating data into readily understood means using a combination of data analytics and dashboard visualization. For instance, the design of an interactive feature to propose a predictive PurpleAir sensor-locating scoring system is a useful application for facilitating more evidence-based decision-making to inform better policy. Using tools such as these makes it easier to bring different stakeholders into the conversation to refine the boundaries and parameters used for analysis, and develop resources that are relevant and bespoke according to the specific needs and requirements of the target audience.

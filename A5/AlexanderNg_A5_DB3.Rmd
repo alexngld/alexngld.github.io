@@ -1,0 +1,189 @@
+---
+title: "AlexanderNg_A5_DB3_PM25SensorRecommendation"
+runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: fill
+---
+
+```{r global, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(leaflet)
+library(sf)
+library(plotly)
+library(tigris)
+library(dplyr)
+library(shiny)
+
+
+cbg_sensor_combined <- readRDS("cbg_sensor_combined.rds")
+smc_sensors_clean <- readRDS("smc_sensors_clean.rds") %>% st_as_sf()
+
+
+
+
+
+```
+
+Inputs {.sidebar}
+-------------------------------------
+
+  
+```{r}
+
+sliderInput(
+  inputId = "white",
+  label = "Percent White Weighting:",
+  min = 0,
+  max = 1,
+  value = 0,
+  step = 0.1
+)
+
+sliderInput(
+  inputId = "black",
+  label = "Percent Black Weighting:",
+  min = 0,
+  max = 1,
+  value = 0,
+  step = 0.1
+)
+
+sliderInput(
+  inputId = "asian",
+  label = "Percent Asian Weighting:",
+  min = 0,
+  max = 1,
+  value = 0,
+  step = 0.1
+)
+
+sliderInput(
+  inputId = "native",
+  label = "Percent Native Weighting:",
+  min = 0,
+  max = 1,
+  value = 0,
+  step = 0.1
+)
+
+sliderInput(
+  inputId = "other",
+  label = "Percent Other Race Weighting:",
+  min = 0,
+  max = 1,
+  value = 0,
+  step = 0.1
+)
+
+sliderInput(
+  inputId = "perc_density",
+  label = "Census Block Group Density Weighting:",
+  min = 0,
+  max = 1,
+  value = 0,
+  step = 0.1
+)
+
+sliderInput(
+  inputId = "percent",
+  label = "Percent Area Covered Weighting:",
+  min = 0,
+  max = 1,
+  value = 0.3,
+  step = 0.1
+)
+```
+
+
+Column
+-------------------------------------
+
+### Completeness Score Based on Race, Population Density, and Sensor Locations
+
+```{r}
+leafletOutput("map")
+```
+
+```{r, context = "server"}
+observeEvent({input$percent
+             input$white
+             input$black
+             input$asian
+             input$native
+             input$other
+             input$perc_density}, {
+  cbg_sensor_score <- cbg_sensor_combined %>%
+    mutate(score = perc_white*input$white + perc_black*input$black + perc_asian*input$asian + perc_native*input$native + perc_other*input$other + perc_area*input$percent + perc_density*input$perc_density)
+  
+  cbg_pal <- colorNumeric(
+  palette = "Reds",
+  domain = 
+    cbg_sensor_score$score
+)
+
+  output$map <- renderLeaflet({
+  leaflet() %>% 
+    addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+    addPolygons(
+      data = cbg_sensor_score,
+      fillColor = ~cbg_pal(score),
+      color = "white",
+      opacity = 0.5,
+      fillOpacity = 0.5,
+      label = ~score %>% signif(2),
+      weight = 1,
+      highlightOptions = highlightOptions(
+        weight = 2,
+        opacity = 1
+      )
+    )
+  })
+})
+
+```
+
+
+Column
+-------------------------------------
+
+### Proposed Sensor Location Based on Lowest Completeness Score
+
+```{r}
+leafletOutput("map2")
+```
+
+```{r, context = "server"}
+
+observeEvent({input$percent
+             input$white
+             input$black
+             input$asian
+             input$native
+             input$other
+             input$perc_density}, {
+  cbg_sensor_score <- cbg_sensor_combined %>%
+    mutate(score = perc_white*input$white + perc_black*input$black + perc_asian*input$asian + perc_native*input$native + perc_other*input$other + perc_area*input$percent + perc_density*input$perc_density)
+  
+output$map2 <- renderLeaflet({
+  leaflet() %>% 
+    addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+    addCircleMarkers(
+    data = smc_sensors_clean,
+    color = "red",
+    label = ~sensor_index,
+    radius = 1,
+    opacity = 0.25
+    ) %>%
+    addCircleMarkers(
+    data = cbg_sensor_score %>% filter(score == min(score)) %>% st_centroid() %>% st_as_sf(),
+    color = "green",
+    label = "New Sensor Location",
+    radius = 5,
+    opacity = 0.75
+    )
+})
+})
+
+```
